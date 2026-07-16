@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: can-logger-dashboard
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: DASHBOARD_MODE
+        value: cloud
+      - key: DEVICE_NAME
+        value: Family Vehicle
+      - key: DEVICE_UPLOAD_TOKEN
+        sync: false
