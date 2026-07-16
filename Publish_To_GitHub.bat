@@ -16,6 +16,11 @@ if errorlevel 1 (
 )
 
 echo.
+echo IMPORTANT:
+echo GitHub does not accept account passwords for git push.
+echo If Git asks for a password, use a GitHub Personal Access Token instead.
+echo If a bad login is cached, run Reset_GitHub_Login.bat first.
+echo.
 echo First create an EMPTY GitHub repository in your browser.
 echo Do not add README, .gitignore, or license on GitHub because this local repo already has files.
 echo.
@@ -33,13 +38,14 @@ git branch -M main
 
 echo.
 echo Pushing dashboard to GitHub...
+echo If a browser sign-in opens, sign in as the owner of the repo and approve Git Credential Manager.
 git push -u origin main
 
 if errorlevel 1 (
   echo.
   echo Push failed.
-  echo Check that the URL is correct and that GitHub login/authentication is available.
-  echo If Git asks for sign-in, complete the browser login and run this file again.
+  echo Most common fix: run Reset_GitHub_Login.bat, then run this publisher again.
+  echo You can also use GitHub Desktop to publish this folder.
   pause
   exit /b 1
 )
