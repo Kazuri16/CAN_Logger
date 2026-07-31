@@ -1,0 +1,16 @@
+{
+  "name": "can-logger-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Customer vehicle health dashboard for the ESP32 CAN logger with local and cloud modes.",
+  "type": "module",
+  "scripts": {
+    "setup": "node --version",
+    "start": "node server.js",
+    "start:cloud": "node server.js",
+    "check": "node --check server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
