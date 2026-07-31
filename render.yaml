@@ -17,3 +17,5 @@ services:
         sync: false
       - key: CUSTOMER_ID
         value: CANLOGGER-001
+      - key: DATABASE_URL
+        sync: false

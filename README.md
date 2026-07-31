@@ -108,6 +108,24 @@ For local testing of cloud mode, double-click:
 ```text
 Start_Cloud_Dashboard.bat
 ```
+
+## Database
+
+A PostgreSQL/Supabase-ready database foundation is included in:
+
+```text
+database/
+```
+
+It contains:
+
+```text
+database/schema.sql
+database/seed.demo.sql
+database/README.md
+```
+
+The schema supports multiple customers, multiple users, roles, devices, user-device access, latest vehicle status, event history, reports, and audit logs. Add `DATABASE_URL` in Render when you connect a hosted database.
 ## What Customers See
 
 - Home: vehicle health, monitoring status, vehicle state, latest event, active alert, logger connection.
