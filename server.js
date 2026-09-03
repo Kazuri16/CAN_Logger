@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createReadStream, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual, scryptSync, createHash } from "node:crypto";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "public");
@@ -12,13 +12,26 @@ const requestTimeoutMs = 3500;
 const dashboardMode = String(process.env.DASHBOARD_MODE || "local").toLowerCase();
 const uploadToken = process.env.DEVICE_UPLOAD_TOKEN || "";
 const authEmail = process.env.DASHBOARD_AUTH_EMAIL || "customer@example.com";
-const authPassword = process.env.DASHBOARD_AUTH_PASSWORD || "";
+const authPasswordHash = process.env.DASHBOARD_AUTH_PASSWORD_HASH || "";
+const authPasswordPlain = process.env.DASHBOARD_AUTH_PASSWORD || ""; // deprecated plaintext fallback (S1)
+const authConfigured = Boolean(authPasswordHash || authPasswordPlain);
 const customerId = process.env.CUSTOMER_ID || "CANLOGGER-001";
-const authRequired = process.env.DASHBOARD_AUTH !== "off" && (dashboardMode === "cloud" || Boolean(authPassword));
+const authRequired = process.env.DASHBOARD_AUTH !== "off" && (dashboardMode === "cloud" || authConfigured);
 const sessionCookieName = "canlogger_session";
+const hostSessionCookieName = "__Host-canlogger_session"; // used when the cookie is Secure (S8)
+const sessionTtlMs = 24 * 60 * 60 * 1000;
+const sessionAbsoluteMaxMs = 7 * 24 * 60 * 60 * 1000; // absolute session lifetime cap (S8)
 const sessions = new Map();
 const dataDir = path.join(__dirname, "data");
 const cloudStorePath = path.join(dataDir, "cloud-store.json");
+const sessionsPath = path.join(dataDir, "sessions.json");
+
+// Login throttling (S5). ponytail: per-IP in-memory Map + timestamps; a shared
+// store is needed for multiple instances (same later phase as session persistence).
+const loginAttempts = new Map(); // ip -> { count, firstAt, lockedUntil }
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_LOCK_MS = 15 * 60 * 1000;
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -84,8 +97,77 @@ async function saveCloudStore() {
   await writeFile(cloudStorePath, JSON.stringify(cloudStore, null, 2));
 }
 
+// Session store (S2). ponytail: in-memory Map mirrored to data/sessions.json so a
+// restart doesn't log everyone out. Multi-instance / horizontal scaling needs a
+// shared store (Redis/DB) instead — later phase.
+async function loadSessions() {
+  try {
+    const raw = JSON.parse(await readFile(sessionsPath, "utf8"));
+    const now = Date.now();
+    for (const [token, session] of Object.entries(raw)) {
+      if (session && session.expiresAt > now && (!session.absoluteExpiresAt || session.absoluteExpiresAt > now)) {
+        sessions.set(token, session);
+      }
+    }
+  } catch {
+    // no persisted sessions yet
+  }
+}
+
+async function saveSessions() {
+  try {
+    await mkdir(dataDir, { recursive: true });
+    await writeFile(sessionsPath, JSON.stringify(Object.fromEntries(sessions), null, 2));
+  } catch (error) {
+    console.warn(`Could not persist sessions: ${error.message}`);
+  }
+}
+
+// Periodic sweep (S2/S5): drop expired sessions and stale login-attempt records
+// instead of only pruning on a hit to that exact key.
+function sweepExpired() {
+  const now = Date.now();
+  for (const [token, session] of sessions) {
+    if (!session || session.expiresAt <= now || (session.absoluteExpiresAt && session.absoluteExpiresAt <= now)) {
+      sessions.delete(token);
+    }
+  }
+  for (const [ip, rec] of loginAttempts) {
+    const keepUntil = Math.max(rec.lockedUntil || 0, (rec.firstAt || 0) + LOGIN_WINDOW_MS);
+    if (keepUntil <= now) {
+      loginAttempts.delete(ip);
+    }
+  }
+}
+
+function clientIp(req) {
+  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return forwarded || req.socket?.remoteAddress || "unknown";
+}
+
+function loginLocked(ip) {
+  const rec = loginAttempts.get(ip);
+  return Boolean(rec && rec.lockedUntil && rec.lockedUntil > Date.now());
+}
+
+function recordLoginFailure(ip) {
+  const now = Date.now();
+  const rec = loginAttempts.get(ip) || { count: 0, firstAt: now, lockedUntil: 0 };
+  if (now - rec.firstAt > LOGIN_WINDOW_MS) {
+    rec.count = 0;
+    rec.firstAt = now;
+  }
+  rec.count += 1;
+  if (rec.count >= LOGIN_MAX_ATTEMPTS) {
+    rec.lockedUntil = now + LOGIN_LOCK_MS;
+  }
+  loginAttempts.set(ip, rec);
+}
+
 function verifyUploadToken(req) {
   if (!uploadToken) {
+    // Only reached in pure local mode with auth off; when auth is required the
+    // POST handler rejects an unset token with 503 before calling this (S4).
     return true;
   }
   const header = req.headers.authorization || "";
@@ -100,46 +182,109 @@ function parseCookies(req) {
   }).filter(([key]) => key));
 }
 
+function readSessionToken(req) {
+  const cookies = parseCookies(req);
+  return cookies[hostSessionCookieName] || cookies[sessionCookieName] || null;
+}
+
 function currentSession(req) {
-  const token = parseCookies(req)[sessionCookieName];
+  const token = readSessionToken(req);
   if (!token) {
     return null;
   }
   const session = sessions.get(token);
-  if (!session || session.expiresAt < Date.now()) {
+  const now = Date.now();
+  if (!session || session.expiresAt < now || (session.absoluteExpiresAt && session.absoluteExpiresAt < now)) {
     sessions.delete(token);
     return null;
   }
   return session;
 }
 
-function secureCookie(req) {
-  return req.headers["x-forwarded-proto"] === "https" || String(req.headers.host || "").startsWith("localhost") === false;
+// Secure is set unless the connection is plainly local dev (host localhost /
+// 127.0.0.1 / ::1 over plain HTTP). Cloud mode is always Secure (S7).
+function isSecureRequest(req) {
+  if (dashboardMode === "cloud") {
+    return true;
+  }
+  if (req.headers["x-forwarded-proto"] === "https") {
+    return true;
+  }
+  const host = String(req.headers.host || "").split(":")[0].toLowerCase();
+  const localDev = host === "" || host === "localhost" || host === "127.0.0.1" || host === "::1";
+  return !localDev;
 }
 
 function setSessionCookie(req, res, token) {
-  const secure = secureCookie(req) ? "; Secure" : "";
-  res.setHeader("set-cookie", `${sessionCookieName}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400${secure}`);
+  const secure = isSecureRequest(req);
+  // __Host- prefix requires Secure + Path=/ + no Domain; fall back to the plain
+  // name for local dev so an http:// session still works (S8).
+  const name = secure ? hostSessionCookieName : sessionCookieName;
+  const maxAge = Math.floor(sessionTtlMs / 1000);
+  res.setHeader("set-cookie", `${name}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${secure ? "; Secure" : ""}`);
 }
 
 function clearSessionCookie(res) {
-  res.setHeader("set-cookie", `${sessionCookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
+  res.setHeader("set-cookie", [
+    `${hostSessionCookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0; Secure`,
+    `${sessionCookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`
+  ]);
 }
 
-function safeEqual(a, b) {
-  const left = Buffer.from(String(a));
-  const right = Buffer.from(String(b));
-  if (left.length !== right.length) {
+// Constant-time comparison that hashes both sides first, so a mismatch never
+// leaks the length of the secret (S5).
+function constantEquals(a, b) {
+  const ha = createHash("sha256").update(String(a)).digest();
+  const hb = createHash("sha256").update(String(b)).digest();
+  return timingSafeEqual(ha, hb);
+}
+
+function hashPassword(password, salt = randomBytes(16).toString("hex")) {
+  return `${salt}:${scryptSync(String(password), salt, 64).toString("hex")}`;
+}
+
+// Verify a candidate password against DASHBOARD_AUTH_PASSWORD_HASH ("salt:hexhash",
+// scrypt) or, as a deprecated fallback, the plaintext DASHBOARD_AUTH_PASSWORD (S1).
+function verifyPassword(candidate) {
+  if (authPasswordHash) {
+    const [salt, expectedHex] = authPasswordHash.split(":");
+    if (!salt || !expectedHex) {
+      return false;
+    }
+    const expected = Buffer.from(expectedHex, "hex");
+    let derived;
+    try {
+      derived = scryptSync(String(candidate), salt, expected.length);
+    } catch {
+      return false;
+    }
+    return derived.length === expected.length && timingSafeEqual(derived, expected);
+  }
+  if (authPasswordPlain) {
+    return constantEquals(candidate, authPasswordPlain);
+  }
+  return false;
+}
+
+// CSRF defense for state-changing POSTs (S6): when the request carries an Origin
+// (or Referer) it must match our own host. A same-origin <form> POST that sends
+// neither header is still allowed.
+function sameOriginRequest(req) {
+  const source = req.headers.origin || req.headers.referer || "";
+  if (!source) {
+    return true;
+  }
+  try {
+    return new URL(source).host === req.headers.host;
+  } catch {
     return false;
   }
-  return timingSafeEqual(left, right);
 }
 
-function authStatus(req) {
-  const session = currentSession(req);
+function authStatus(req, session = currentSession(req)) {
   return {
     authRequired,
-    authConfigured: Boolean(authPassword),
+    authConfigured,
     authenticated: Boolean(session) || !authRequired,
     email: session?.email || (authRequired ? "" : authEmail),
     customerId,
@@ -151,9 +296,9 @@ function requireBrowserAuth(req, res) {
   if (!authRequired) {
     return true;
   }
-  if (!authPassword) {
+  if (!authConfigured) {
     json(res, 503, {
-      error: "Dashboard login is not configured. Set DASHBOARD_AUTH_EMAIL and DASHBOARD_AUTH_PASSWORD in hosting environment variables."
+      error: "Dashboard login is not configured. Set DASHBOARD_AUTH_EMAIL and DASHBOARD_AUTH_PASSWORD_HASH in hosting environment variables."
     });
     return false;
   }
@@ -425,6 +570,12 @@ function cloudEventFromStatus(status, payload) {
 }
 
 async function handleApi(req, res, url) {
+  // S6: block cross-origin state-changing POSTs before any handler runs.
+  const stateChangingPaths = ["/api/auth/login", "/api/auth/logout", "/api/profile"];
+  if (req.method === "POST" && stateChangingPaths.includes(url.pathname) && !sameOriginRequest(req)) {
+    return json(res, 403, { error: "Cross-origin request blocked." });
+  }
+
   if (url.pathname === "/api/auth/session" && req.method === "GET") {
     return json(res, 200, authStatus(req));
   }
@@ -433,41 +584,56 @@ async function handleApi(req, res, url) {
     if (!authRequired) {
       return json(res, 200, authStatus(req));
     }
-    if (!authPassword) {
+    if (!authConfigured) {
       return json(res, 503, {
         ok: false,
-        error: "Dashboard login is not configured. Set DASHBOARD_AUTH_EMAIL and DASHBOARD_AUTH_PASSWORD."
+        error: "Dashboard login is not configured. Set DASHBOARD_AUTH_EMAIL and DASHBOARD_AUTH_PASSWORD_HASH."
       });
+    }
+    const ip = clientIp(req);
+    if (loginLocked(ip)) {
+      return json(res, 429, { ok: false, error: "Too many failed login attempts. Try again later." });
     }
     try {
       const body = JSON.parse(await readBody(req) || "{}");
-      const emailOk = safeEqual(String(body.email || "").trim().toLowerCase(), authEmail.trim().toLowerCase());
-      const passwordOk = safeEqual(body.password || "", authPassword);
+      const emailOk = constantEquals(String(body.email || "").trim().toLowerCase(), authEmail.trim().toLowerCase());
+      const passwordOk = verifyPassword(body.password || "");
       if (!emailOk || !passwordOk) {
+        recordLoginFailure(ip);
         return json(res, 401, { ok: false, error: "Invalid email or password." });
       }
+      loginAttempts.delete(ip);
       const token = randomBytes(32).toString("hex");
-      sessions.set(token, {
+      const now = Date.now();
+      const session = {
         email: authEmail,
         customerId,
-        expiresAt: Date.now() + 24 * 60 * 60 * 1000
-      });
+        expiresAt: now + sessionTtlMs,
+        absoluteExpiresAt: now + sessionAbsoluteMaxMs
+      };
+      sessions.set(token, session);
+      await saveSessions();
       setSessionCookie(req, res, token);
-      return json(res, 200, { ok: true, ...authStatus({ headers: { cookie: `${sessionCookieName}=${token}` } }) });
+      return json(res, 200, { ok: true, ...authStatus(req, session) });
     } catch {
       return json(res, 400, { ok: false, error: "Invalid login data." });
     }
   }
 
   if (url.pathname === "/api/auth/logout" && req.method === "POST") {
-    const token = parseCookies(req)[sessionCookieName];
-    if (token) {
-      sessions.delete(token);
+    const token = readSessionToken(req);
+    if (token && sessions.delete(token)) {
+      await saveSessions();
     }
     clearSessionCookie(res);
     return json(res, 200, { ok: true });
   }
   if (url.pathname === "/api/cloud/status" && req.method === "POST") {
+    // S4: fail closed — an unset upload token must not accept device POSTs
+    // whenever auth is required (cloud mode or DASHBOARD_AUTH on).
+    if (!uploadToken && authRequired) {
+      return json(res, 503, { ok: false, error: "DEVICE_UPLOAD_TOKEN not configured" });
+    }
     if (!verifyUploadToken(req)) {
       return json(res, 401, { ok: false, error: "Invalid device token." });
     }
@@ -669,8 +835,6 @@ async function serveStatic(req, res, url) {
   createReadStream(filePath).pipe(res);
 }
 
-await loadCloudStore();
-
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", `http://${req.headers.host}`);
@@ -684,8 +848,58 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(port, () => {
-  console.log(`CAN Logger dashboard running at http://localhost:${port}`);
-  console.log(`Dashboard mode: ${dashboardMode}`);
-  console.log(`Logger address: ${profile.address}`);
-});
+function logStartupWarnings() {
+  if (authPasswordPlain && !authPasswordHash) {
+    console.warn("DASHBOARD_AUTH_PASSWORD is deprecated; generate a hash with `node server.js --hash-password` and set DASHBOARD_AUTH_PASSWORD_HASH instead.");
+  }
+  if (authConfigured && authEmail === "customer@example.com") {
+    console.warn("DASHBOARD_AUTH_EMAIL is still the default customer@example.com; set a real login email.");
+  }
+}
+
+async function start() {
+  await loadCloudStore();
+  await loadSessions();
+  logStartupWarnings();
+  setInterval(sweepExpired, 60 * 1000).unref();
+  server.listen(port, () => {
+    console.log(`CAN Logger dashboard running at http://localhost:${port}`);
+    console.log(`Dashboard mode: ${dashboardMode}`);
+    console.log(`Logger address: ${profile.address}`);
+  });
+}
+
+// `node server.js --hash-password ["<password>"]` prints a scrypt hash (salt:hexhash)
+// for DASHBOARD_AUTH_PASSWORD_HASH, reading the password from the arg or stdin (S1).
+function runHashPasswordCli() {
+  const inline = process.argv[process.argv.indexOf("--hash-password") + 1];
+  const emit = (password) => {
+    const value = String(password || "").replace(/\r?\n$/, "");
+    if (!value) {
+      console.error('Usage: node server.js --hash-password "<password>"  (or pipe the password on stdin)');
+      process.exit(1);
+    }
+    console.log(hashPassword(value));
+    process.exit(0);
+  };
+  if (inline) {
+    emit(inline);
+    return;
+  }
+  let input = "";
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (chunk) => { input += chunk; });
+  process.stdin.on("end", () => emit(input.trim()));
+}
+
+const isMainModule = Boolean(process.argv[1]) && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isMainModule) {
+  if (process.argv.includes("--hash-password")) {
+    runHashPasswordCli();
+  } else {
+    start();
+  }
+}
+
+export { server, handleApi, start, loadCloudStore, loadSessions, hashPassword };

@@ -25,6 +25,19 @@ let authSession = null;
 
 const $ = (selector) => document.querySelector(selector);
 
+// Escape untrusted values before they go into innerHTML. Device-supplied fields
+// (alert titles, CAN IDs, fault codes, raw reasons, file names) reach the DOM
+// this way, so escape at every interpolation site (S3).
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;"
+  })[ch]);
+}
+
 function setPage(page) {
   Object.entries(pages).forEach(([name, element]) => element.classList.toggle("active", name === page));
   document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.page === page));
@@ -112,6 +125,7 @@ async function handleLogin(event) {
     await initializeDashboard();
   } catch (error) {
     $("#loginMessage").textContent = "Sign in failed. Check the email and password.";
+    $("#loginPassword").value = ""; // don't leave the password sitting in the DOM (S10)
   }
 }
 
@@ -170,16 +184,16 @@ function renderHome(status) {
 
 function renderAlerts(alerts) {
   const markup = alerts.map((alert) => `
-    <article class="alert-card ${alert.severity}">
+    <article class="alert-card ${escapeHtml(alert.severity)}">
       <div class="alert-title">
-        <span>${alert.title}</span>
-        <span class="badge">${alert.status}</span>
+        <span>${escapeHtml(alert.title)}</span>
+        <span class="badge">${escapeHtml(alert.status)}</span>
       </div>
-      <div>${new Date(alert.time).toLocaleString()}</div>
+      <div>${escapeHtml(new Date(alert.time).toLocaleString())}</div>
       <div class="service-details">
-        CAN ID: ${alert.service.canId || "n/a"}<br>
-        Fault code: ${alert.service.faultCode || "n/a"}<br>
-        Raw reason: ${alert.service.rawReason || "n/a"}
+        CAN ID: ${escapeHtml(alert.service.canId || "n/a")}<br>
+        Fault code: ${escapeHtml(alert.service.faultCode || "n/a")}<br>
+        Raw reason: ${escapeHtml(alert.service.rawReason || "n/a")}
       </div>
     </article>
   `).join("");
@@ -196,7 +210,7 @@ function renderFiles(files) {
   $("#fileList").innerHTML = visibleFiles.map((file) => `
     <div class="file-row">
       <div>
-        <strong>${file.name}</strong>
+        <strong>${escapeHtml(file.name)}</strong>
         <small>${formatNumber(file.size)} bytes${file.active ? " - active session" : ""}</small>
       </div>
       <div class="file-actions">
