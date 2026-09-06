@@ -52,5 +52,5 @@ if errorlevel 1 (
 
 echo.
 echo Done. Your dashboard code is now on GitHub.
-echo Next: connect this GitHub repo to Render as a Web Service.
+echo Next: run "vercel link" in this folder (or import the repo at vercel.com) to connect it to a Vercel project.
 pause

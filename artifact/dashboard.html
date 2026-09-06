@@ -1,0 +1,543 @@
+<title>Vehicle Health Dashboard</title>
+<style>
+  :root {
+    color-scheme: light;
+    --ink: #172026;
+    --muted: #63717c;
+    --line: #d8e0e6;
+    --page: #eef3f1;
+    --panel: #ffffff;
+    --green: #23745d;
+    --green-soft: #dff1ea;
+    --blue: #255f85;
+    --blue-soft: #e0edf5;
+    --amber: #b56b18;
+    --amber-soft: #fff0d8;
+    --red: #ae3d3d;
+    --red-soft: #f9dfdf;
+    --shadow: 0 18px 50px rgba(30, 45, 55, 0.12);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --ink: #e6edf0;
+      --muted: #93a2ab;
+      --line: #2c383f;
+      --page: #10181b;
+      --panel: #182226;
+      --green: #4fbf9c;
+      --green-soft: #12332a;
+      --blue: #6fb0dc;
+      --blue-soft: #12293a;
+      --amber: #e0a24c;
+      --amber-soft: #3a2c11;
+      --red: #e08080;
+      --red-soft: #3a1a1a;
+      --shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ink: #e6edf0;
+    --muted: #93a2ab;
+    --line: #2c383f;
+    --page: #10181b;
+    --panel: #182226;
+    --green: #4fbf9c;
+    --green-soft: #12332a;
+    --blue: #6fb0dc;
+    --blue-soft: #12293a;
+    --amber: #e0a24c;
+    --amber-soft: #3a2c11;
+    --red: #e08080;
+    --red-soft: #3a1a1a;
+    --shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--page);
+    color: var(--ink);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 24px 20px 48px;
+    display: grid;
+    gap: 18px;
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .brand-mark {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    background: var(--green);
+    color: white;
+    border-radius: 8px;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+
+  .brand strong,
+  .brand span {
+    display: block;
+  }
+
+  .brand span {
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .eyebrow {
+    margin: 0 0 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--muted);
+  }
+
+  h1,
+  h2,
+  h3,
+  p {
+    margin-top: 0;
+  }
+
+  h1 {
+    margin-bottom: 0;
+    font-size: 26px;
+  }
+
+  h2 {
+    font-size: 30px;
+    margin-bottom: 8px;
+  }
+
+  h3 {
+    font-size: 17px;
+    margin-bottom: 0;
+  }
+
+  button {
+    font: inherit;
+    cursor: pointer;
+    border: 0;
+  }
+
+  .secondary-button {
+    min-height: 38px;
+    padding: 0 14px;
+    border-radius: 8px;
+    background: var(--panel);
+    color: var(--ink);
+    border: 1px solid var(--line);
+  }
+
+  .connection-pill {
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+    font-size: 13px;
+  }
+
+  .connection-pill.online {
+    color: var(--green);
+    border-color: var(--green);
+  }
+
+  .connection-pill.offline {
+    color: var(--amber);
+    border-color: var(--amber);
+  }
+
+  .health-band,
+  .panel,
+  .metric-panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+  }
+
+  .health-band {
+    min-height: 150px;
+    padding: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    flex-wrap: wrap;
+    border-left: 8px solid var(--green);
+  }
+
+  .health-band.warning {
+    border-left-color: var(--amber);
+  }
+
+  .health-band.critical {
+    border-left-color: var(--red);
+  }
+
+  .health-band.unknown {
+    border-left-color: var(--line);
+  }
+
+  .health-gauge {
+    width: 110px;
+    height: 110px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--green-soft);
+    color: var(--green);
+    font-weight: 900;
+    font-size: 22px;
+    flex-shrink: 0;
+  }
+
+  .health-gauge.warning {
+    background: var(--amber-soft);
+    color: var(--amber);
+  }
+
+  .health-gauge.critical {
+    background: var(--red-soft);
+    color: var(--red);
+  }
+
+  .health-gauge.unknown {
+    background: var(--page);
+    color: var(--muted);
+  }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+  }
+
+  .metric-panel {
+    padding: 16px;
+    min-height: 84px;
+    display: grid;
+    align-content: space-between;
+    box-shadow: none;
+  }
+
+  .metric-panel span {
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .metric-panel strong {
+    font-size: 19px;
+  }
+
+  .work-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+    gap: 18px;
+  }
+
+  @media (max-width: 760px) {
+    .work-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .panel {
+    padding: 18px;
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+
+  .panel-header span {
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .signal-list,
+  .file-list {
+    display: grid;
+    gap: 10px;
+  }
+
+  .signal-list div,
+  .file-row {
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--page);
+  }
+
+  .signal-list div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .signal-list span {
+    color: var(--muted);
+  }
+
+  .file-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .file-row small {
+    display: block;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+
+  .empty-state {
+    padding: 14px;
+    border-radius: 8px;
+    background: var(--blue-soft);
+    color: var(--blue);
+    font-size: 14px;
+  }
+
+  .empty-state.error {
+    background: var(--amber-soft);
+    color: var(--amber);
+  }
+
+  .footnote {
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
+    padding: 8px 0 0;
+  }
+</style>
+
+<div class="wrap">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">CL</div>
+      <div>
+        <strong>CAN Logger</strong>
+        <span>Vehicle Health Dashboard (preview)</span>
+      </div>
+    </div>
+    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+      <span class="connection-pill" id="connectionPill">Checking connection...</span>
+      <button class="secondary-button" id="refreshButton" type="button">Refresh</button>
+    </div>
+  </header>
+
+  <section class="health-band unknown" id="healthBand">
+    <div>
+      <p class="eyebrow">Vehicle health</p>
+      <h2 id="healthText">Loading...</h2>
+      <p id="activeAlertText" style="color: var(--muted);">Waiting for dashboard data.</p>
+    </div>
+    <div class="health-gauge unknown" id="healthGauge">--</div>
+  </section>
+
+  <div class="summary-grid">
+    <article class="metric-panel">
+      <span>Monitoring status</span>
+      <strong id="monitoringStatus">--</strong>
+    </article>
+    <article class="metric-panel">
+      <span>Vehicle state</span>
+      <strong id="vehicleState">--</strong>
+    </article>
+    <article class="metric-panel">
+      <span>Latest event</span>
+      <strong id="latestEvent">--</strong>
+    </article>
+    <article class="metric-panel">
+      <span>Updated</span>
+      <strong id="updatedAt">--</strong>
+    </article>
+  </div>
+
+  <div class="work-grid">
+    <section class="panel">
+      <div class="panel-header">
+        <h3>Latest Readings</h3>
+      </div>
+      <div class="signal-list">
+        <div><span>Speed</span><strong id="speedSignal">--</strong></div>
+        <div><span>Brake pressure</span><strong id="brakeSignal">--</strong></div>
+        <div><span>Acceleration</span><strong id="accelSignal">--</strong></div>
+        <div><span>Events</span><strong id="eventSignal">--</strong></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h3>Report Files</h3>
+      </div>
+      <div id="fileList"><div class="empty-state">Loading files...</div></div>
+    </section>
+  </div>
+
+  <p class="footnote">Read-only preview. Data loads live from the configured dashboard deployment; nothing is stored or sent from this page.</p>
+</div>
+
+<script>
+  // Point this at your deployed dashboard, e.g. "https://your-app.vercel.app".
+  // Leave empty only if this page is ever served from the same origin as the dashboard.
+  const BASE_URL = "";
+
+  const $ = (selector) => document.querySelector(selector);
+
+  function formatNumber(value, digits = 0) {
+    return Number(value || 0).toLocaleString(undefined, {
+      maximumFractionDigits: digits,
+      minimumFractionDigits: digits
+    });
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      "\"": "&quot;",
+      "'": "&#39;"
+    })[ch]);
+  }
+
+  function healthClass(status) {
+    const text = String(status.health || "").toLowerCase();
+    if (text.includes("critical")) return "critical";
+    if (text.includes("warning") || text.includes("offline")) return "warning";
+    return "ok";
+  }
+
+  function showNotConnected(message) {
+    $("#connectionPill").textContent = message || "Not connected";
+    $("#connectionPill").classList.remove("online");
+    $("#connectionPill").classList.add("offline");
+    $("#healthBand").className = "health-band unknown";
+    $("#healthGauge").className = "health-gauge unknown";
+    $("#healthGauge").textContent = "--";
+    $("#healthText").textContent = "No data";
+    $("#activeAlertText").textContent = message || "Could not reach the dashboard API. Set BASE_URL in this page's script to your deployed dashboard URL.";
+    $("#monitoringStatus").textContent = "--";
+    $("#vehicleState").textContent = "--";
+    $("#latestEvent").textContent = "--";
+    $("#updatedAt").textContent = "--";
+    $("#speedSignal").textContent = "--";
+    $("#brakeSignal").textContent = "--";
+    $("#accelSignal").textContent = "--";
+    $("#eventSignal").textContent = "--";
+  }
+
+  function renderHealth(status) {
+    const kind = healthClass(status);
+    const gaugeClass = kind === "ok" ? "" : kind;
+
+    $("#healthBand").className = `health-band ${gaugeClass}`;
+    $("#healthGauge").className = `health-gauge ${gaugeClass}`;
+    $("#healthGauge").textContent = kind === "critical" || kind === "warning" ? "!" : "OK";
+
+    $("#healthText").textContent = status.health || "Unknown";
+    $("#activeAlertText").textContent = status.activeAlert || "No active alerts.";
+    $("#monitoringStatus").textContent = status.monitoring || "--";
+    $("#vehicleState").textContent = status.vehicleState || "--";
+    $("#latestEvent").textContent = status.latestEvent || "--";
+    $("#updatedAt").textContent = status.updatedAt ? new Date(status.updatedAt).toLocaleString() : "--";
+
+    const metrics = status.metrics || {};
+    $("#speedSignal").textContent = `${formatNumber(metrics.speedKph, 1)} kph`;
+    $("#brakeSignal").textContent = `${formatNumber(metrics.brakeBar, 1)} bar`;
+    $("#accelSignal").textContent = `${formatNumber(metrics.accelerationMps2, 2)} m/s2`;
+    $("#eventSignal").textContent = `${formatNumber(metrics.events)} events`;
+
+    const pill = $("#connectionPill");
+    pill.textContent = status.connected ? `Connected to ${status.loggerAddress || "logger"}` : "Waiting for cloud upload";
+    pill.classList.toggle("online", Boolean(status.connected));
+    pill.classList.toggle("offline", !status.connected);
+  }
+
+  function renderFiles(files) {
+    const list = $("#fileList");
+    if (!Array.isArray(files) || files.length === 0) {
+      list.innerHTML = '<div class="empty-state">No report files available yet.</div>';
+      return;
+    }
+    list.innerHTML = files.map((file) => `
+      <div class="file-row">
+        <div>
+          <strong>${escapeHtml(file.name)}</strong>
+          <small>${formatNumber(file.size)} bytes${file.active ? " - active session" : ""}</small>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  async function loadStatus() {
+    try {
+      const response = await fetch(`${BASE_URL}/api/cloud/status`, { credentials: "include" });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const status = await response.json();
+      renderHealth(status);
+    } catch (error) {
+      showNotConnected("Not connected - no data. Check BASE_URL and that you are signed in to the dashboard.");
+    }
+  }
+
+  async function loadFiles() {
+    try {
+      const response = await fetch(`${BASE_URL}/api/files`, { credentials: "include" });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      renderFiles(await response.json());
+    } catch (error) {
+      $("#fileList").innerHTML = '<div class="empty-state error">Could not load files. Check BASE_URL and sign-in state.</div>';
+    }
+  }
+
+  function refresh() {
+    loadStatus();
+    loadFiles();
+  }
+
+  $("#refreshButton").addEventListener("click", refresh);
+
+  refresh();
+</script>
