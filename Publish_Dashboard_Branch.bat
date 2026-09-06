@@ -45,11 +45,10 @@ if errorlevel 1 (
 echo.
 echo Done. Dashboard is pushed to GitHub branch: %BRANCH_NAME%
 echo.
-echo In Render, select:
-echo   Repository: your CAN_Logger repo
-echo   Branch: %BRANCH_NAME%
-echo   Root Directory: leave blank
-echo   Build Command: npm install
-echo   Start Command: npm start
+echo In Vercel, either:
+echo   - Run "vercel link" in this folder and deploy from the CLI, or
+echo   - Import the repo at vercel.com and select:
+echo       Branch: %BRANCH_NAME%
+echo       Root Directory: leave blank
 echo.
 pause

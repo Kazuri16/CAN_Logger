@@ -90,11 +90,13 @@ Cloud upload endpoint:
 POST /api/cloud/status
 ```
 
-A Render-ready config is included at:
+A Vercel-ready config is included at:
 
 ```text
-render.yaml
+vercel.json
 ```
+
+See "Deploying to Vercel" below for the deploy steps.
 
 Full hosting guide:
 
@@ -107,6 +109,50 @@ For local testing of cloud mode, double-click:
 ```text
 Start_Cloud_Dashboard.bat
 ```
+
+## Deploying to Vercel
+
+The dashboard is a plain `node:http` server (`server.js`) with a Vercel serverless
+entry point at `api/index.js`. `vercel.json` routes every request to that
+function and bundles `public/**` alongside it. A human with Vercel account
+access needs to run these steps -- they are not run automatically:
+
+1. Install the Vercel CLI once (`npm i -g vercel`), then from this folder run:
+
+   ```sh
+   vercel link
+   ```
+
+   and follow the prompts to connect this folder to a Vercel project.
+
+2. Set the following as Vercel **project environment variables** (Project ->
+   Settings -> Environment Variables), not in a committed file:
+
+   ```text
+   DASHBOARD_MODE=cloud
+   DASHBOARD_AUTH=              # leave unset/on in cloud mode
+   DEVICE_UPLOAD_TOKEN=
+   SUPABASE_URL=
+   SUPABASE_ANON_KEY=
+   SUPABASE_SERVICE_ROLE_KEY=
+   SESSION_COOKIE_SECRET=
+   CUSTOMER_ID=
+   DEVICE_NAME=
+   ```
+
+   See `.env.example` for what each variable does. Never commit real values --
+   `.env` stays untracked.
+
+3. Deploy:
+
+   ```sh
+   vercel deploy --prod
+   ```
+
+4. Verify the deployment: `GET /api/dashboard-status` responds (once signed
+   in), login works end to end, and the ESP32's `POST /api/cloud/status`
+   upload path is reachable. (`/api/status` is the ESP32 logger's own
+   endpoint on the local network -- it is not served by this deployment.)
 
 ## Database
 

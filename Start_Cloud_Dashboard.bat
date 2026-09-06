@@ -3,15 +3,12 @@ setlocal
 
 cd /d "%~dp0"
 set "DASHBOARD_MODE=cloud"
-set "DASHBOARD_AUTH_EMAIL=customer@example.com"
 set "CUSTOMER_ID=CANLOGGER-001"
 
-set /p DASHBOARD_AUTH_PASSWORD=Enter temporary local dashboard password: 
-if "%DASHBOARD_AUTH_PASSWORD%"=="" (
-  echo Password is required for local cloud mode.
-  pause
-  exit /b 1
-)
+REM Login uses Supabase Auth now. Skip login for this local smoke test unless
+REM you have already set SUPABASE_URL, SUPABASE_ANON_KEY, and
+REM SESSION_COOKIE_SECRET in your environment (see .env.example).
+if not defined SUPABASE_URL set "DASHBOARD_AUTH=off"
 
 where node >nul 2>nul
 if errorlevel 1 (
@@ -27,9 +24,11 @@ echo.
 echo Local test URL:
 echo   http://localhost:5177
 echo.
-echo Login for local cloud test:
-echo   Email: customer@example.com
-echo   Password: the password you just entered
+if defined SUPABASE_URL (
+  echo Login uses your Supabase Auth user ^(see .env.example^).
+) else (
+  echo DASHBOARD_AUTH=off - login is skipped for this local smoke test.
+)
 echo.
 echo Upload endpoint for testing:
 echo   http://localhost:5177/api/cloud/status
