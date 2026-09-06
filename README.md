@@ -149,9 +149,10 @@ access needs to run these steps -- they are not run automatically:
    vercel deploy --prod
    ```
 
-4. Verify the deployment: `GET /api/status` (or `/api/dashboard-status`) responds,
-   login works end to end, and the ESP32's `POST /api/cloud/status` upload path
-   is reachable.
+4. Verify the deployment: `GET /api/dashboard-status` responds (once signed
+   in), login works end to end, and the ESP32's `POST /api/cloud/status`
+   upload path is reachable. (`/api/status` is the ESP32 logger's own
+   endpoint on the local network -- it is not served by this deployment.)
 
 ## Database
 

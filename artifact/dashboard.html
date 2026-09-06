@@ -442,6 +442,7 @@
     const text = String(status.health || "").toLowerCase();
     if (text.includes("critical")) return "critical";
     if (text.includes("warning") || text.includes("offline")) return "warning";
+    if (!status.connected) return "unknown";
     return "ok";
   }
 
@@ -470,7 +471,7 @@
 
     $("#healthBand").className = `health-band ${gaugeClass}`;
     $("#healthGauge").className = `health-gauge ${gaugeClass}`;
-    $("#healthGauge").textContent = kind === "critical" || kind === "warning" ? "!" : "OK";
+    $("#healthGauge").textContent = kind === "critical" || kind === "warning" ? "!" : kind === "unknown" ? "--" : "OK";
 
     $("#healthText").textContent = status.health || "Unknown";
     $("#activeAlertText").textContent = status.activeAlert || "No active alerts.";

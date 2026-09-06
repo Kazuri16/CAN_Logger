@@ -7,6 +7,12 @@ optional claude.ai Artifact preview of the dashboard.
 
 - [x] Remove `render.yaml` and Render references (`Publish_Dashboard_Branch.bat`,
       `Publish_To_GitHub.bat`, `README.md`)
+- [x] Fix `Start_Cloud_Dashboard.bat` (unrelated to Render specifically, but
+      found during this pass): it set `DASHBOARD_AUTH_EMAIL`/`_PASSWORD`,
+      which `server.js` no longer reads post-Supabase-auth migration, and
+      never set `SESSION_COOKIE_SECRET` -- it crashed on the server's startup
+      guard. It now sets `DASHBOARD_AUTH=off` for the local smoke test unless
+      `SUPABASE_URL` is already set.
 - [x] Finalize `vercel.json` / `api/index.js` (routes all traffic to
       `api/index.js`, bundles `public/**` via `includeFiles` — already correct
       on this base branch, no gaps found)
@@ -23,7 +29,7 @@ optional claude.ai Artifact preview of the dashboard.
       interactive session) after setting `BASE_URL`
 - [ ] `vercel link` + set env vars (`DASHBOARD_MODE`, `DASHBOARD_AUTH`,
       Supabase URL/keys, session secret, `DEVICE_UPLOAD_TOKEN`)
-- [ ] `vercel deploy --prod`; verify `/api/status`, login, and the
+- [ ] `vercel deploy --prod`; verify `/api/dashboard-status`, login, and the
       cloud-status POST path
 - [ ] Repoint cloud uploads / DNS at the Vercel URL
 - [ ] Delete the Render service in the Render dashboard
