@@ -9,10 +9,12 @@
     "start": "node server.js",
     "start:cloud": "node server.js",
     "check": "node --check server.js",
-    "hash-password": "node server.js --hash-password",
     "test": "node --test"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.115.0"
   }
 }

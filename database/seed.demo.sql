@@ -1,4 +1,7 @@
-﻿-- Demo seed data for local/Supabase testing.
+﻿-- SUPERSEDED by database/seed.example.sql (Supabase Auth era). Kept for history.
+-- This targets the old customers / app_users tables from the retired schema.sql.
+--
+-- Demo seed data for local/Supabase testing.
 -- Password hashes below are placeholders. Replace with bcrypt/Argon2 hashes from your auth provider.
 
 insert into customers (customer_code, display_name, contact_email)

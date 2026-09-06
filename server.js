@@ -1,9 +1,9 @@
-﻿import http from "node:http";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import http from "node:http";
 import { createReadStream, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomBytes, timingSafeEqual, scryptSync, createHash } from "node:crypto";
+import { randomBytes, createHash, scryptSync, createCipheriv, createDecipheriv, timingSafeEqual } from "node:crypto";
+import { createClient } from "@supabase/supabase-js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "public");
@@ -11,23 +11,35 @@ const port = Number(process.env.PORT || 5177);
 const requestTimeoutMs = 3500;
 const dashboardMode = String(process.env.DASHBOARD_MODE || "local").toLowerCase();
 const uploadToken = process.env.DEVICE_UPLOAD_TOKEN || "";
-const authEmail = process.env.DASHBOARD_AUTH_EMAIL || "customer@example.com";
-const authPasswordHash = process.env.DASHBOARD_AUTH_PASSWORD_HASH || "";
-const authPasswordPlain = process.env.DASHBOARD_AUTH_PASSWORD || ""; // deprecated plaintext fallback (S1)
-const authConfigured = Boolean(authPasswordHash || authPasswordPlain);
 const customerId = process.env.CUSTOMER_ID || "CANLOGGER-001";
+
+const supabaseUrl = process.env.SUPABASE_URL || "";
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || "";
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const sessionCookieSecret = process.env.SESSION_COOKIE_SECRET || "";
+
+const authConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 const authRequired = process.env.DASHBOARD_AUTH !== "off" && (dashboardMode === "cloud" || authConfigured);
+
 const sessionCookieName = "canlogger_session";
 const hostSessionCookieName = "__Host-canlogger_session"; // used when the cookie is Secure (S8)
-const sessionTtlMs = 24 * 60 * 60 * 1000;
-const sessionAbsoluteMaxMs = 7 * 24 * 60 * 60 * 1000; // absolute session lifetime cap (S8)
-const sessions = new Map();
-const dataDir = path.join(__dirname, "data");
-const cloudStorePath = path.join(dataDir, "cloud-store.json");
-const sessionsPath = path.join(dataDir, "sessions.json");
+const cookieMaxAgeMs = 7 * 24 * 60 * 60 * 1000;
 
-// Login throttling (S5). ponytail: per-IP in-memory Map + timestamps; a shared
-// store is needed for multiple instances (same later phase as session persistence).
+// Fail closed at import time, not just in start(). Under a serverless wrapper
+// server.js is imported and start() never runs, so the start()-only guard below
+// would be skipped and cookieKey() would silently derive from scrypt("") — a
+// world-known key that lets anyone forge a session cookie. Enforced only when
+// auth is actually required (DASHBOARD_AUTH=off on a trusted LAN still boots).
+if (authRequired && sessionCookieSecret.length < 32) {
+  const message = "FATAL: SESSION_COOKIE_SECRET must be 32+ characters (see .env.example), or run with DASHBOARD_AUTH=off on a trusted network.";
+  console.error(message);
+  throw new Error(message);
+}
+
+// Login throttling (S5): best-effort only. The Map is per-process, so on
+// serverless (many lambda instances) or multi-instance hosting it does not
+// enforce a global limit — authoritative rate limiting is Supabase Auth's own
+// on signInWithPassword. A shared store (Redis/DB) is a later phase.
 const loginAttempts = new Map(); // ip -> { count, firstAt, lockedUntil }
 const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
@@ -51,11 +63,45 @@ let profile = {
   mode: dashboardMode
 };
 
-let cloudStore = {
-  latest: null,
-  events: [],
-  files: []
-};
+// ---------------------------------------------------------------------------
+// Supabase clients. defaultFactory wraps createClient; __setSupabaseFactory lets
+// the test suite inject a fake client (no live Supabase in CI).
+// ---------------------------------------------------------------------------
+const defaultFactory = (url, key, options) => createClient(url, key, options);
+let supabaseFactory = defaultFactory;
+let serviceClientInstance = null;
+
+export function __setSupabaseFactory(factory) {
+  supabaseFactory = factory || defaultFactory;
+  serviceClientInstance = null; // rebuild lazily with the new factory
+}
+
+// anon-key client, no persisted session — used only for password login + token refresh.
+function authClient() {
+  return supabaseFactory(supabaseUrl, supabaseAnonKey, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  });
+}
+
+// Per-request client carrying the user's access token so RLS applies to every read.
+function userClient(accessToken) {
+  return supabaseFactory(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+    auth: { persistSession: false, autoRefreshToken: false }
+  });
+}
+
+// service-role client: BYPASSES RLS. Created once. ONLY for ESP32 ingestion
+// (POST /api/cloud/status) and the device->user attribution lookup. NEVER for
+// user-facing reads.
+function serviceClient() {
+  if (!serviceClientInstance) {
+    serviceClientInstance = supabaseFactory(supabaseUrl, supabaseServiceKey, {
+      auth: { persistSession: false, autoRefreshToken: false }
+    });
+  }
+  return serviceClientInstance;
+}
 
 function json(res, status, payload) {
   res.writeHead(status, {
@@ -84,54 +130,10 @@ async function readBody(req) {
   return body;
 }
 
-async function loadCloudStore() {
-  try {
-    cloudStore = JSON.parse(await readFile(cloudStorePath, "utf8"));
-  } catch {
-    cloudStore = { latest: null, events: [], files: [] };
-  }
-}
-
-async function saveCloudStore() {
-  await mkdir(dataDir, { recursive: true });
-  await writeFile(cloudStorePath, JSON.stringify(cloudStore, null, 2));
-}
-
-// Session store (S2). ponytail: in-memory Map mirrored to data/sessions.json so a
-// restart doesn't log everyone out. Multi-instance / horizontal scaling needs a
-// shared store (Redis/DB) instead — later phase.
-async function loadSessions() {
-  try {
-    const raw = JSON.parse(await readFile(sessionsPath, "utf8"));
-    const now = Date.now();
-    for (const [token, session] of Object.entries(raw)) {
-      if (session && session.expiresAt > now && (!session.absoluteExpiresAt || session.absoluteExpiresAt > now)) {
-        sessions.set(token, session);
-      }
-    }
-  } catch {
-    // no persisted sessions yet
-  }
-}
-
-async function saveSessions() {
-  try {
-    await mkdir(dataDir, { recursive: true });
-    await writeFile(sessionsPath, JSON.stringify(Object.fromEntries(sessions), null, 2));
-  } catch (error) {
-    console.warn(`Could not persist sessions: ${error.message}`);
-  }
-}
-
-// Periodic sweep (S2/S5): drop expired sessions and stale login-attempt records
-// instead of only pruning on a hit to that exact key.
+// Periodic sweep (S5): drop stale login-attempt records instead of only pruning
+// on a hit to that exact key. (Sessions are now stateless — nothing else to sweep.)
 function sweepExpired() {
   const now = Date.now();
-  for (const [token, session] of sessions) {
-    if (!session || session.expiresAt <= now || (session.absoluteExpiresAt && session.absoluteExpiresAt <= now)) {
-      sessions.delete(token);
-    }
-  }
   for (const [ip, rec] of loginAttempts) {
     const keepUntil = Math.max(rec.lockedUntil || 0, (rec.firstAt || 0) + LOGIN_WINDOW_MS);
     if (keepUntil <= now) {
@@ -140,9 +142,14 @@ function sweepExpired() {
   }
 }
 
+// Trust a forwarded client IP only from the hosting platform's own header, never
+// the caller-supplied X-Forwarded-For (spoofable: lets an attacker dodge the
+// login throttle or lock out someone else's IP). CLIENT_IP_HEADER overrides the
+// default for other platforms; verify the correct header at deploy time.
+const trustedIpHeader = String(process.env.CLIENT_IP_HEADER || "x-vercel-forwarded-for").toLowerCase();
 function clientIp(req) {
-  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
-  return forwarded || req.socket?.remoteAddress || "unknown";
+  const platform = String(req.headers[trustedIpHeader] || "").split(",")[0].trim();
+  return platform || req.socket?.remoteAddress || "unknown";
 }
 
 function loginLocked(ip) {
@@ -164,14 +171,23 @@ function recordLoginFailure(ip) {
   loginAttempts.set(ip, rec);
 }
 
+// Constant-time compare via fixed-length SHA-256 digests (avoids the length leak
+// and the throw-on-unequal-length footgun of comparing the raw buffers).
+function tokenEquals(a, b) {
+  return timingSafeEqual(
+    createHash("sha256").update(String(a)).digest(),
+    createHash("sha256").update(String(b)).digest()
+  );
+}
+
 function verifyUploadToken(req) {
   if (!uploadToken) {
     // Only reached in pure local mode with auth off; when auth is required the
     // POST handler rejects an unset token with 503 before calling this (S4).
     return true;
   }
-  const header = req.headers.authorization || "";
-  return header === `Bearer ${uploadToken}` || req.headers["x-device-token"] === uploadToken;
+  return tokenEquals(req.headers.authorization || "", `Bearer ${uploadToken}`) ||
+    tokenEquals(req.headers["x-device-token"] || "", uploadToken);
 }
 
 function parseCookies(req) {
@@ -182,23 +198,9 @@ function parseCookies(req) {
   }).filter(([key]) => key));
 }
 
-function readSessionToken(req) {
+function readSessionCookie(req) {
   const cookies = parseCookies(req);
   return cookies[hostSessionCookieName] || cookies[sessionCookieName] || null;
-}
-
-function currentSession(req) {
-  const token = readSessionToken(req);
-  if (!token) {
-    return null;
-  }
-  const session = sessions.get(token);
-  const now = Date.now();
-  if (!session || session.expiresAt < now || (session.absoluteExpiresAt && session.absoluteExpiresAt < now)) {
-    sessions.delete(token);
-    return null;
-  }
-  return session;
 }
 
 // Secure is set unless the connection is plainly local dev (host localhost /
@@ -210,18 +212,19 @@ function isSecureRequest(req) {
   if (req.headers["x-forwarded-proto"] === "https") {
     return true;
   }
-  const host = String(req.headers.host || "").split(":")[0].toLowerCase();
-  const localDev = host === "" || host === "localhost" || host === "127.0.0.1" || host === "::1";
-  return !localDev;
+  // Otherwise require real TLS evidence. "host is not localhost" is NOT evidence:
+  // it set `__Host-...; Secure` on plain-HTTP LAN responses (canlogger.local),
+  // which browsers silently drop -> permanent login loop.
+  return Boolean(req.socket?.encrypted);
 }
 
-function setSessionCookie(req, res, token) {
+function setSessionCookie(req, res, value) {
   const secure = isSecureRequest(req);
   // __Host- prefix requires Secure + Path=/ + no Domain; fall back to the plain
   // name for local dev so an http:// session still works (S8).
   const name = secure ? hostSessionCookieName : sessionCookieName;
-  const maxAge = Math.floor(sessionTtlMs / 1000);
-  res.setHeader("set-cookie", `${name}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${secure ? "; Secure" : ""}`);
+  const maxAge = Math.floor(cookieMaxAgeMs / 1000);
+  res.setHeader("set-cookie", `${name}=${encodeURIComponent(value)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${secure ? "; Secure" : ""}`);
 }
 
 function clearSessionCookie(res) {
@@ -231,44 +234,102 @@ function clearSessionCookie(res) {
   ]);
 }
 
-// Constant-time comparison that hashes both sides first, so a mismatch never
-// leaks the length of the secret (S5).
-function constantEquals(a, b) {
-  const ha = createHash("sha256").update(String(a)).digest();
-  const hb = createHash("sha256").update(String(b)).digest();
-  return timingSafeEqual(ha, hb);
-}
-
-function hashPassword(password, salt = randomBytes(16).toString("hex")) {
-  return `${salt}:${scryptSync(String(password), salt, 64).toString("hex")}`;
-}
-
-// Verify a candidate password against DASHBOARD_AUTH_PASSWORD_HASH ("salt:hexhash",
-// scrypt) or, as a deprecated fallback, the plaintext DASHBOARD_AUTH_PASSWORD (S1).
-function verifyPassword(candidate) {
-  if (authPasswordHash) {
-    const [salt, expectedHex] = authPasswordHash.split(":");
-    if (!salt || !expectedHex) {
-      return false;
-    }
-    const expected = Buffer.from(expectedHex, "hex");
-    let derived;
-    try {
-      derived = scryptSync(String(candidate), salt, expected.length);
-    } catch {
-      return false;
-    }
-    return derived.length === expected.length && timingSafeEqual(derived, expected);
+// ---------------------------------------------------------------------------
+// Stateless session: the Supabase session lives inside the __Host- cookie,
+// AES-256-GCM encrypted with a key derived from SESSION_COOKIE_SECRET. No
+// server-side store. Layout: base64url( iv[12] | authTag[16] | ciphertext ).
+// ---------------------------------------------------------------------------
+let cookieKeyCache = null;
+function cookieKey() {
+  if (!cookieKeyCache) {
+    cookieKeyCache = scryptSync(sessionCookieSecret, "canlogger-session-v1", 32);
   }
-  if (authPasswordPlain) {
-    return constantEquals(candidate, authPasswordPlain);
-  }
-  return false;
+  return cookieKeyCache;
 }
 
-// CSRF defense for state-changing POSTs (S6): when the request carries an Origin
-// (or Referer) it must match our own host. A same-origin <form> POST that sends
-// neither header is still allowed.
+function encryptSession(payload) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", cookieKey(), iv);
+  const body = Buffer.concat([cipher.update(JSON.stringify(payload), "utf8"), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), body]).toString("base64url");
+}
+
+function decryptSession(value) {
+  try {
+    const buf = Buffer.from(String(value), "base64url");
+    if (buf.length < 29) {
+      return null;
+    }
+    const decipher = createDecipheriv("aes-256-gcm", cookieKey(), buf.subarray(0, 12));
+    decipher.setAuthTag(buf.subarray(12, 28));
+    const body = Buffer.concat([decipher.update(buf.subarray(28)), decipher.final()]);
+    return JSON.parse(body.toString("utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function sessionFromSupabase(s) {
+  return {
+    access_token: s.access_token,
+    refresh_token: s.refresh_token,
+    expires_at: s.expires_at || Math.floor(Date.now() / 1000) + 3600,
+    userId: s.user?.id || null,
+    email: s.user?.email || ""
+  };
+}
+
+// Single-flight token refresh. A page load fires several authenticated API calls
+// at once; without this each would call refreshSession() with the same rotating
+// refresh token and every caller but the first would lose the race and 401.
+// Keyed by refresh token; the entry is cleared once settled so a later request
+// can retry. In-memory only — cross-instance races remain and are inherent.
+const refreshInFlight = new Map();
+function refreshSessionSingleFlight(refreshToken) {
+  let pending = refreshInFlight.get(refreshToken);
+  if (!pending) {
+    pending = (async () => {
+      try {
+        const { data, error } = await authClient().auth.refreshSession({ refresh_token: refreshToken });
+        return !error && data?.session ? data.session : null;
+      } catch {
+        return null;
+      }
+    })().finally(() => refreshInFlight.delete(refreshToken));
+    refreshInFlight.set(refreshToken, pending);
+  }
+  return pending;
+}
+
+// Read + decrypt the cookie; refresh the Supabase token when it is within 60s of
+// expiry and re-set the cookie on rotation. Returns null (and clears the cookie)
+// when there is no valid session.
+async function getSession(req, res) {
+  const raw = readSessionCookie(req);
+  if (!raw) {
+    return null;
+  }
+  let sess = decryptSession(raw);
+  if (!sess || !sess.access_token || !sess.refresh_token) {
+    return null;
+  }
+  const now = Math.floor(Date.now() / 1000);
+  if (!sess.expires_at || sess.expires_at - now <= 60) {
+    const refreshed = await refreshSessionSingleFlight(sess.refresh_token);
+    if (!refreshed) {
+      clearSessionCookie(res);
+      return null;
+    }
+    sess = sessionFromSupabase(refreshed);
+    setSessionCookie(req, res, encryptSession(sess));
+  }
+  return sess;
+}
+
+// ---------------------------------------------------------------------------
+// CSRF (S6): a state-changing POST that carries an Origin/Referer must match our
+// host. A same-origin <form> POST that sends neither header is still allowed.
+// ---------------------------------------------------------------------------
 function sameOriginRequest(req) {
   const source = req.headers.origin || req.headers.referer || "";
   if (!source) {
@@ -281,33 +342,34 @@ function sameOriginRequest(req) {
   }
 }
 
-function authStatus(req, session = currentSession(req)) {
+function authStatusFor(session) {
   return {
     authRequired,
     authConfigured,
     authenticated: Boolean(session) || !authRequired,
-    email: session?.email || (authRequired ? "" : authEmail),
+    email: session?.email || "",
     customerId,
     mode: dashboardMode
   };
 }
 
-function requireBrowserAuth(req, res) {
+function requireBrowserAuth(req, res, session) {
   if (!authRequired) {
     return true;
   }
   if (!authConfigured) {
     json(res, 503, {
-      error: "Dashboard login is not configured. Set DASHBOARD_AUTH_EMAIL and DASHBOARD_AUTH_PASSWORD_HASH in hosting environment variables."
+      error: "Dashboard login is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY in hosting environment variables."
     });
     return false;
   }
-  if (currentSession(req)) {
+  if (session) {
     return true;
   }
   json(res, 401, { error: "Login required." });
   return false;
 }
+
 function normalizeAddress(input) {
   const trimmed = String(input || "").trim();
   if (!trimmed) {
@@ -423,6 +485,94 @@ function normalizeCloudPayload(payload) {
   };
 }
 
+// Normalized status object -> device_status_latest row columns.
+function statusToRow(status) {
+  return {
+    source: status.source || "cloud",
+    health: status.health,
+    vehicle_state: status.vehicleState,
+    monitoring: status.monitoring,
+    latest_event: status.latestEvent,
+    active_alert: status.activeAlert,
+    speed_kph: status.metrics.speedKph,
+    brake_bar: status.metrics.brakeBar,
+    acceleration_mps2: status.metrics.accelerationMps2,
+    received_frames: status.metrics.received,
+    logged_frames: status.metrics.logged,
+    decoded_signals: status.metrics.decoded,
+    event_count: status.metrics.events,
+    fault_count: status.metrics.conditionEvents,
+    dropped_frames: status.metrics.dropped,
+    rejected_frames: status.metrics.rejected,
+    gps_status: status.location?.gpsStatus || "not_connected",
+    latitude: status.location?.latitude ?? null,
+    longitude: status.location?.longitude ?? null,
+    raw_payload: status.raw || {},
+    received_at: status.updatedAt
+  };
+}
+
+// device_status_latest row -> the normalized status object the client renders.
+function rowToStatus(row) {
+  return {
+    connected: true,
+    source: row.source || "cloud",
+    updatedAt: row.received_at || new Date().toISOString(),
+    deviceName: profile.deviceName,
+    loggerAddress: "cloud upload",
+    health: row.health || "Unknown",
+    monitoring: row.monitoring || "Cloud monitoring",
+    vehicleState: row.vehicle_state || "Unknown",
+    latestEvent: row.latest_event || "Cloud status received",
+    activeAlert: row.active_alert || "No active alerts",
+    location: {
+      gpsStatus: row.gps_status || "not_connected",
+      lastKnownLocation: null,
+      latitude: row.latitude ?? null,
+      longitude: row.longitude ?? null,
+      route: []
+    },
+    raw: row.raw_payload || {},
+    metrics: {
+      received: Number(row.received_frames || 0),
+      logged: Number(row.logged_frames || 0),
+      decoded: Number(row.decoded_signals || 0),
+      events: Number(row.event_count || 0),
+      conditionEvents: Number(row.fault_count || 0),
+      dropped: Number(row.dropped_frames || 0),
+      rejected: Number(row.rejected_frames || 0),
+      speedKph: Number(row.speed_kph || 0),
+      brakeBar: Number(row.brake_bar || 0),
+      accelerationMps2: Number(row.acceleration_mps2 || 0)
+    }
+  };
+}
+
+function rowToEvent(row) {
+  return {
+    id: row.id,
+    time: row.received_at,
+    title: row.title,
+    severity: row.severity || "info",
+    status: row.status || "info",
+    service: {
+      faultCode: row.fault_code || "",
+      canId: row.can_id || "",
+      rawReason: row.raw_reason || ""
+    }
+  };
+}
+
+function rowToFile(row) {
+  return {
+    name: row.file_name,
+    size: Number(row.byte_size || 0),
+    active: false,
+    fileType: row.file_type,
+    serviceOnly: Boolean(row.service_only)
+  };
+}
+
 function waitingForCloudStatus() {
   return {
     connected: false,
@@ -441,7 +591,7 @@ function waitingForCloudStatus() {
       received: 0,
       logged: 0,
       decoded: 0,
-      events: cloudStore.events.length,
+      events: 0,
       conditionEvents: 0,
       dropped: 0,
       rejected: 0,
@@ -450,10 +600,6 @@ function waitingForCloudStatus() {
       accelerationMps2: 0
     }
   };
-}
-
-function cloudStatus() {
-  return cloudStore.latest || waitingForCloudStatus();
 }
 
 function mapStatus(status) {
@@ -556,7 +702,7 @@ function friendlyEventsFromStatus(dashboardStatus) {
 
 function cloudEventFromStatus(status, payload) {
   return {
-    id: `${Date.now()}-${cloudStore.events.length}`,
+    id: String(Date.now()),
     time: status.updatedAt,
     title: status.activeAlert !== "No active alerts" ? status.activeAlert : status.latestEvent,
     severity: severityFromStatus(status.raw),
@@ -569,6 +715,130 @@ function cloudEventFromStatus(status, payload) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Per-user Postgres reads. Every read goes through the user's own client (so
+// RLS applies) AND adds an explicit user_id / device_id filter (defense in
+// depth: testable with a mocked client, independent of un-runnable RLS).
+// ---------------------------------------------------------------------------
+async function ownedDeviceUuids(client, userId) {
+  const { data, error } = await client
+    .from("user_devices")
+    .select("device_id")
+    .eq("user_id", userId); // explicit owner filter in addition to RLS
+  if (error) {
+    throw new Error(error.message || "user_devices lookup failed");
+  }
+  return (data || []).map((r) => r.device_id).filter(Boolean);
+}
+
+async function latestStatusForUser(session) {
+  const client = userClient(session.access_token);
+  const ids = await ownedDeviceUuids(client, session.userId);
+  if (!ids.length) {
+    return null;
+  }
+  const { data, error } = await client
+    .from("device_status_latest")
+    .select("*")
+    .in("device_id", ids)
+    .order("received_at", { ascending: false })
+    .limit(1);
+  if (error) {
+    throw new Error(error.message || "device_status_latest read failed");
+  }
+  return data && data[0] ? rowToStatus(data[0]) : null;
+}
+
+async function eventsForUser(session, limit = 100) {
+  const client = userClient(session.access_token);
+  const ids = await ownedDeviceUuids(client, session.userId);
+  if (!ids.length) {
+    return [];
+  }
+  const { data, error } = await client
+    .from("device_events")
+    .select("*")
+    .in("device_id", ids)
+    .order("received_at", { ascending: false })
+    .limit(limit);
+  if (error) {
+    throw new Error(error.message || "device_events read failed");
+  }
+  return (data || []).map(rowToEvent);
+}
+
+async function filesForUser(session, limit = 200) {
+  const client = userClient(session.access_token);
+  const ids = await ownedDeviceUuids(client, session.userId);
+  if (!ids.length) {
+    return [];
+  }
+  const { data, error } = await client
+    .from("report_files")
+    .select("*")
+    .in("device_id", ids)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) {
+    throw new Error(error.message || "report_files read failed");
+  }
+  return (data || []).map(rowToFile);
+}
+
+// ESP32 upload -> resolve the device row by sha256(DEVICE_UPLOAD_TOKEN), then
+// write device_status_latest + device_events with the service-role client.
+async function ingestDeviceStatus(payload) {
+  if (!authConfigured || !supabaseServiceKey) {
+    return { status: 503, body: { ok: false, error: "Supabase is not configured for cloud ingestion." } };
+  }
+  const status = normalizeCloudPayload(payload);
+  const svc = serviceClient();
+  const tokenHash = createHash("sha256").update(uploadToken).digest("hex");
+  const devLookup = await svc
+    .from("devices")
+    .select("id")
+    .eq("upload_token_hash", tokenHash)
+    .limit(1);
+  if (devLookup.error) {
+    return { status: 502, body: { ok: false, error: devLookup.error.message } };
+  }
+  const deviceUuid = devLookup.data && devLookup.data[0] && devLookup.data[0].id;
+  if (!deviceUuid) {
+    return {
+      status: 503,
+      body: { ok: false, error: "Device not provisioned. Add a devices row whose upload_token_hash is sha256(DEVICE_UPLOAD_TOKEN)." }
+    };
+  }
+  const upsert = await svc
+    .from("device_status_latest")
+    .upsert({ device_id: deviceUuid, ...statusToRow(status) }, { onConflict: "device_id" });
+  if (upsert.error) {
+    return { status: 502, body: { ok: false, error: upsert.error.message } };
+  }
+  // Only log genuine event signals, not status fields. latestEvent/activeAlert
+  // ride along on every heartbeat and are already mirrored in
+  // device_status_latest, so inserting on them fills device_events unbounded.
+  if (payload.eventType || payload.faultCode || payload.recovered) {
+    const evt = cloudEventFromStatus(status, payload);
+    const insert = await svc.from("device_events").insert({
+      device_id: deviceUuid,
+      received_at: status.updatedAt,
+      event_time: status.updatedAt,
+      title: evt.title,
+      severity: evt.severity,
+      status: evt.status,
+      fault_code: evt.service.faultCode || null,
+      can_id: evt.service.canId || null,
+      raw_reason: evt.service.rawReason || null,
+      raw_payload: status.raw || {}
+    });
+    if (insert.error) {
+      return { status: 502, body: { ok: false, error: insert.error.message } };
+    }
+  }
+  return { status: 200, body: { ok: true, updatedAt: status.updatedAt } };
+}
+
 async function handleApi(req, res, url) {
   // S6: block cross-origin state-changing POSTs before any handler runs.
   const stateChangingPaths = ["/api/auth/login", "/api/auth/logout", "/api/profile"];
@@ -576,58 +846,55 @@ async function handleApi(req, res, url) {
     return json(res, 403, { error: "Cross-origin request blocked." });
   }
 
-  if (url.pathname === "/api/auth/session" && req.method === "GET") {
-    return json(res, 200, authStatus(req));
-  }
-
   if (url.pathname === "/api/auth/login" && req.method === "POST") {
     if (!authRequired) {
-      return json(res, 200, authStatus(req));
+      return json(res, 200, authStatusFor(null));
     }
     if (!authConfigured) {
       return json(res, 503, {
         ok: false,
-        error: "Dashboard login is not configured. Set DASHBOARD_AUTH_EMAIL and DASHBOARD_AUTH_PASSWORD_HASH."
+        error: "Dashboard login is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY."
       });
     }
     const ip = clientIp(req);
     if (loginLocked(ip)) {
       return json(res, 429, { ok: false, error: "Too many failed login attempts. Try again later." });
     }
+    let body;
     try {
-      const body = JSON.parse(await readBody(req) || "{}");
-      const emailOk = constantEquals(String(body.email || "").trim().toLowerCase(), authEmail.trim().toLowerCase());
-      const passwordOk = verifyPassword(body.password || "");
-      if (!emailOk || !passwordOk) {
-        recordLoginFailure(ip);
-        return json(res, 401, { ok: false, error: "Invalid email or password." });
-      }
-      loginAttempts.delete(ip);
-      const token = randomBytes(32).toString("hex");
-      const now = Date.now();
-      const session = {
-        email: authEmail,
-        customerId,
-        expiresAt: now + sessionTtlMs,
-        absoluteExpiresAt: now + sessionAbsoluteMaxMs
-      };
-      sessions.set(token, session);
-      await saveSessions();
-      setSessionCookie(req, res, token);
-      return json(res, 200, { ok: true, ...authStatus(req, session) });
+      body = JSON.parse(await readBody(req) || "{}");
     } catch {
       return json(res, 400, { ok: false, error: "Invalid login data." });
     }
+    const email = String(body.email || "").trim();
+    const password = String(body.password || "");
+    const { data, error } = await authClient().auth.signInWithPassword({ email, password });
+    if (error || !data?.session) {
+      recordLoginFailure(ip);
+      return json(res, 401, { ok: false, error: "Invalid email or password." });
+    }
+    loginAttempts.delete(ip);
+    const sess = sessionFromSupabase(data.session);
+    setSessionCookie(req, res, encryptSession(sess));
+    return json(res, 200, { ok: true, ...authStatusFor(sess) });
   }
 
   if (url.pathname === "/api/auth/logout" && req.method === "POST") {
-    const token = readSessionToken(req);
-    if (token && sessions.delete(token)) {
-      await saveSessions();
+    // Best-effort server-side revocation: a copied/logged cookie's refresh token
+    // stays valid for weeks otherwise. Never let logout 500 — the cookie clear
+    // below is the part that must always happen.
+    const sess = decryptSession(readSessionCookie(req));
+    if (sess?.access_token) {
+      try {
+        await userClient(sess.access_token).auth.signOut();
+      } catch {
+        // token already invalid / Supabase unreachable - fall through to clear
+      }
     }
     clearSessionCookie(res);
     return json(res, 200, { ok: true });
   }
+
   if (url.pathname === "/api/cloud/status" && req.method === "POST") {
     // S4: fail closed — an unset upload token must not accept device POSTs
     // whenever auth is required (cloud mode or DASHBOARD_AUTH on).
@@ -637,38 +904,62 @@ async function handleApi(req, res, url) {
     if (!verifyUploadToken(req)) {
       return json(res, 401, { ok: false, error: "Invalid device token." });
     }
+    let payload;
     try {
-      const payload = JSON.parse(await readBody(req) || "{}");
-      const status = normalizeCloudPayload(payload);
-      cloudStore.latest = status;
-      if (payload.eventType || payload.latestEvent || payload.faultCode || payload.activeAlert) {
-        cloudStore.events.unshift(cloudEventFromStatus(status, payload));
-        cloudStore.events = cloudStore.events.slice(0, 100);
-      }
-      await saveCloudStore();
-      return json(res, 200, { ok: true, updatedAt: status.updatedAt });
+      payload = JSON.parse(await readBody(req) || "{}");
     } catch (error) {
       return json(res, 400, { ok: false, error: error.message });
     }
+    const result = await ingestDeviceStatus(payload);
+    return json(res, result.status, result.body);
   }
 
-  if (!requireBrowserAuth(req, res)) {
+  // ---- everything below is an authenticated browser read ----
+  const session = await getSession(req, res);
+
+  if (url.pathname === "/api/auth/session" && req.method === "GET") {
+    return json(res, 200, authStatusFor(session));
+  }
+
+  if (!requireBrowserAuth(req, res, session)) {
     return;
   }
 
   if (url.pathname === "/api/cloud/status" && req.method === "GET") {
-    return json(res, 200, cloudStatus());
+    try {
+      return json(res, 200, (await latestStatusForUser(session)) || waitingForCloudStatus());
+    } catch {
+      return json(res, 200, waitingForCloudStatus());
+    }
   }
 
   if (url.pathname === "/api/cloud/events" && req.method === "GET") {
-    return json(res, 200, cloudStore.events);
+    try {
+      return json(res, 200, await eventsForUser(session));
+    } catch {
+      return json(res, 200, []);
+    }
   }
 
   if (url.pathname === "/api/profile" && req.method === "GET") {
+    if (dashboardMode === "cloud") {
+      // Cloud profile is environment-managed and shared across all users; never
+      // expose the mutable module object. Return a read-only view.
+      return json(res, 200, {
+        address: "cloud upload",
+        deviceName: process.env.DEVICE_NAME || "Family Vehicle",
+        token: "",
+        serviceMode: false,
+        mode: "cloud"
+      });
+    }
     return json(res, 200, profile);
   }
 
   if (url.pathname === "/api/profile" && req.method === "POST") {
+    if (dashboardMode === "cloud") {
+      return json(res, 403, { error: "Profile is managed via environment configuration in cloud mode." });
+    }
     try {
       const data = JSON.parse(await readBody(req) || "{}");
       profile = {
@@ -686,11 +977,16 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === "/api/test-connection") {
     if (dashboardMode === "cloud") {
-      return json(res, 200, {
-        ok: Boolean(cloudStore.latest),
-        status: cloudStatus(),
-        error: cloudStore.latest ? "" : "No ESP32 cloud upload received yet."
-      });
+      try {
+        const status = await latestStatusForUser(session);
+        return json(res, 200, {
+          ok: Boolean(status),
+          status: status || waitingForCloudStatus(),
+          error: status ? "" : "No ESP32 cloud upload received yet."
+        });
+      } catch (error) {
+        return json(res, 200, { ok: false, status: waitingForCloudStatus(), error: error.message });
+      }
     }
     try {
       const response = await fetchLogger("/api/status");
@@ -709,7 +1005,11 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === "/api/dashboard-status") {
     if (dashboardMode === "cloud") {
-      return json(res, 200, cloudStatus());
+      try {
+        return json(res, 200, (await latestStatusForUser(session)) || waitingForCloudStatus());
+      } catch (error) {
+        return json(res, 200, { ...waitingForCloudStatus(), connectionError: error.message });
+      }
     }
     if (url.searchParams.get("demo") === "1") {
       return json(res, 200, demoStatus());
@@ -732,8 +1032,13 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === "/api/alerts") {
     if (dashboardMode === "cloud") {
-      const statusEvents = friendlyEventsFromStatus(cloudStatus());
-      return json(res, 200, [...cloudStore.events, ...statusEvents].slice(0, 100));
+      try {
+        const [events, status] = await Promise.all([eventsForUser(session), latestStatusForUser(session)]);
+        const synth = status ? friendlyEventsFromStatus(status) : [];
+        return json(res, 200, [...events, ...synth].slice(0, 100));
+      } catch {
+        return json(res, 200, []);
+      }
     }
     const statusResponse = await fetch(`${serverBase(req)}/api/dashboard-status`);
     const dashboardStatus = await statusResponse.json();
@@ -742,7 +1047,11 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === "/api/files") {
     if (dashboardMode === "cloud") {
-      return json(res, 200, cloudStore.files);
+      try {
+        return json(res, 200, await filesForUser(session));
+      } catch {
+        return json(res, 200, []);
+      }
     }
     try {
       const response = await fetchLogger("/api/files");
@@ -784,9 +1093,16 @@ async function handleApi(req, res, url) {
   }
 
   if (url.pathname === "/api/report") {
-    const dashboardStatus = dashboardMode === "cloud"
-      ? cloudStatus()
-      : await (await fetch(`${serverBase(req)}/api/dashboard-status`)).json();
+    let dashboardStatus;
+    if (dashboardMode === "cloud") {
+      try {
+        dashboardStatus = (await latestStatusForUser(session)) || waitingForCloudStatus();
+      } catch {
+        dashboardStatus = waitingForCloudStatus();
+      }
+    } else {
+      dashboardStatus = await (await fetch(`${serverBase(req)}/api/dashboard-status`)).json();
+    }
     const rows = [
       ["CAN Logger Vehicle Health Report"],
       ["Generated", new Date().toLocaleString()],
@@ -849,17 +1165,22 @@ const server = http.createServer(async (req, res) => {
 });
 
 function logStartupWarnings() {
-  if (authPasswordPlain && !authPasswordHash) {
-    console.warn("DASHBOARD_AUTH_PASSWORD is deprecated; generate a hash with `node server.js --hash-password` and set DASHBOARD_AUTH_PASSWORD_HASH instead.");
+  if (authRequired && !authConfigured) {
+    console.warn("Auth is required but SUPABASE_URL / SUPABASE_ANON_KEY are not set - login will return 503.");
   }
-  if (authConfigured && authEmail === "customer@example.com") {
-    console.warn("DASHBOARD_AUTH_EMAIL is still the default customer@example.com; set a real login email.");
+  if (dashboardMode === "cloud" && !supabaseServiceKey) {
+    console.warn("SUPABASE_SERVICE_ROLE_KEY is not set - ESP32 cloud ingestion (POST /api/cloud/status) will fail.");
   }
 }
 
 async function start() {
-  await loadCloudStore();
-  await loadSessions();
+  // Fatal: without a real secret the cookie key is scrypt("") - a world-known
+  // value an attacker can use to forge an authenticated session cookie. Only
+  // enforced when auth is actually required (LAN / DASHBOARD_AUTH=off still boots).
+  if (authRequired && !sessionCookieSecret) {
+    console.error("FATAL: SESSION_COOKIE_SECRET is not set. Set 32+ random bytes (see .env.example) or run with DASHBOARD_AUTH=off on a trusted network.");
+    process.exit(1);
+  }
   logStartupWarnings();
   setInterval(sweepExpired, 60 * 1000).unref();
   server.listen(port, () => {
@@ -869,37 +1190,10 @@ async function start() {
   });
 }
 
-// `node server.js --hash-password ["<password>"]` prints a scrypt hash (salt:hexhash)
-// for DASHBOARD_AUTH_PASSWORD_HASH, reading the password from the arg or stdin (S1).
-function runHashPasswordCli() {
-  const inline = process.argv[process.argv.indexOf("--hash-password") + 1];
-  const emit = (password) => {
-    const value = String(password || "").replace(/\r?\n$/, "");
-    if (!value) {
-      console.error('Usage: node server.js --hash-password "<password>"  (or pipe the password on stdin)');
-      process.exit(1);
-    }
-    console.log(hashPassword(value));
-    process.exit(0);
-  };
-  if (inline) {
-    emit(inline);
-    return;
-  }
-  let input = "";
-  process.stdin.setEncoding("utf8");
-  process.stdin.on("data", (chunk) => { input += chunk; });
-  process.stdin.on("end", () => emit(input.trim()));
-}
-
 const isMainModule = Boolean(process.argv[1]) && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (isMainModule) {
-  if (process.argv.includes("--hash-password")) {
-    runHashPasswordCli();
-  } else {
-    start();
-  }
+  start();
 }
 
-export { server, handleApi, start, loadCloudStore, loadSessions, hashPassword };
+export { server, handleApi, start };

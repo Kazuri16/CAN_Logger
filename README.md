@@ -54,25 +54,24 @@ Stop_Dashboard.bat
 
 ## Customer Login
 
-The dashboard now supports a customer login for online use.
+Login uses Supabase Auth. The Node server calls `supabase.auth.signInWithPassword`
+with an anon-key client, then stores the returned session (encrypted with a key
+derived from `SESSION_COOKIE_SECRET`) inside an httpOnly `__Host-` cookie. There
+is no server-side session store and no signup flow in the app.
 
-Render environment variables:
+Environment variables (see `.env.example` for the full list):
 
 ```text
-DASHBOARD_AUTH_EMAIL=customer@example.com
-DASHBOARD_AUTH_PASSWORD=choose-a-strong-customer-password
+SUPABASE_URL=https://xxxx.supabase.co
+SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...        # cloud ingestion + device attribution only
+SESSION_COOKIE_SECRET=...            # 32+ random bytes
 CUSTOMER_ID=CANLOGGER-001
 ```
 
-`Start_Cloud_Dashboard.bat` asks you to enter a temporary local password at startup. Then sign in with:
-
-```text
-Email: customer@example.com
-Password: the temporary password you entered
-Customer ID: CANLOGGER-001
-```
-
-For a real hosted dashboard, change the password in Render. Do not use the local test password online.
+Create the login user in the Supabase dashboard (Authentication -> Users -> Add
+user), then wire it to a device with `database/seed.example.sql`. Set
+`DASHBOARD_AUTH=off` only on a trusted LAN to skip login entirely.
 ## Online / Cloud Hosting
 
 The dashboard can now run in cloud mode. In cloud mode, the hosted server does not call `canlogger.local`; instead, the ESP32 uploads vehicle-health summaries to the public server.
@@ -111,21 +110,18 @@ Start_Cloud_Dashboard.bat
 
 ## Database
 
-A PostgreSQL/Supabase-ready database foundation is included in:
+In cloud mode the dashboard stores telemetry in Supabase Postgres with Row Level
+Security. See `database/`:
 
 ```text
-database/
+database/migrations/0001_init.sql   current schema + RLS
+database/seed.example.sql           wire one auth user -> device
+database/README.md                  details
 ```
 
-It contains:
-
-```text
-database/schema.sql
-database/seed.demo.sql
-database/README.md
-```
-
-The schema supports multiple customers, multiple users, roles, devices, user-device access, latest vehicle status, event history, reports, and audit logs. Add `DATABASE_URL` in Render when you connect a hosted database.
+Tables: `profiles`, `devices`, `user_devices`, `device_status_latest`,
+`device_events`, `report_files`. `database/schema.sql` and `seed.demo.sql` are
+the retired pre-Supabase model, kept only for history.
 ## What Customers See
 
 - Home: vehicle health, monitoring status, vehicle state, latest event, active alert, logger connection.

@@ -1,58 +1,54 @@
-﻿# Database
+# Database
 
-This folder contains the database foundation for a multi-user CAN Logger dashboard.
+Supabase Postgres schema for the CAN Logger dashboard: Supabase Auth for login,
+Row Level Security for per-user isolation.
 
 ## Files
 
-- `schema.sql` - PostgreSQL/Supabase schema for customers, users, devices, device access, latest status, events, reports, and audit logs.
-- `seed.demo.sql` - demo customer, users, device, and latest status data.
+- `migrations/0001_init.sql` - current schema (profiles, devices, user_devices, device_status_latest, device_events, report_files) with RLS.
+- `seed.example.sql` - placeholder inserts wiring one auth user -> profile + device + access. Fill in the `-- REPLACE <...>` markers.
+- `schema.sql` - **superseded**, pre-Supabase model, kept for history.
+- `seed.demo.sql` - **superseded**, seed for the old model.
 
-## Recommended Hosted Database
-
-Use Supabase Postgres or Render Postgres. The dashboard is currently still using environment-variable auth and a small JSON runtime store, but this schema is ready for the next step: database-backed users and device assignment.
-
-## Main Tables
+## Tables
 
 | Table | Purpose |
 | --- | --- |
-| `customers` | Customer/company/owner records. |
-| `app_users` | Login identities with `customer`, `service`, or `admin` role. |
-| `devices` | ESP32 CAN logger devices. |
-| `user_devices` | Which users can view or service which logger. |
-| `device_status_latest` | Latest uploaded vehicle health snapshot. |
-| `device_events` | Alert and event history. |
-| `report_files` | Downloadable reports/log metadata. |
-| `audit_log` | Login, service-mode, and admin audit trail. |
+| `profiles` | One row per `auth.users` id (auto-created by trigger). Display name + customer code. |
+| `devices` | ESP32 CAN logger devices. `upload_token_hash` = sha256 of `DEVICE_UPLOAD_TOKEN`. |
+| `user_devices` | Which auth user can view/service which device (`viewer` / `service` / `owner`). |
+| `device_status_latest` | Latest uploaded vehicle-health snapshot per device. |
+| `device_events` | Alert / event history. |
+| `report_files` | Downloadable report / log metadata. |
 
-## Roles
+## RLS
 
-```text
-customer = can view assigned vehicles and customer reports
-service  = can view assigned vehicles plus service details/raw logs
-admin    = can manage users/devices
-```
+All six tables have RLS enabled + `force row level security`. `authenticated`
+users get `SELECT` only:
 
-## Applying To Supabase
+- `profiles` / `user_devices`: only rows for `(select auth.uid())`.
+- `devices` + telemetry: only rows for devices listed in the user's `user_devices`.
 
-1. Open Supabase project.
-2. Go to SQL Editor.
-3. Run `schema.sql`.
-4. Run `seed.demo.sql` only for demo/testing.
-5. Replace placeholder password hashes with real auth-provider hashes or use Supabase Auth.
+No insert/update/delete policies for `authenticated` on the telemetry tables -
+only the service role writes them (`POST /api/cloud/status`), and the service
+role bypasses RLS.
 
-## Future App Integration
+## Applying to Supabase
 
-The next code step is to replace these current environment variables:
+1. Open the Supabase project -> SQL Editor.
+2. Run `migrations/0001_init.sql`.
+3. Create your login user: Authentication -> Users -> Add user.
+4. Copy that user's UUID and the sha256 of your `DEVICE_UPLOAD_TOKEN` into
+   `seed.example.sql`, then run it.
 
-```text
-DASHBOARD_AUTH_EMAIL
-DASHBOARD_AUTH_PASSWORD
-CUSTOMER_ID
-```
-
-with database-backed login and device lookup:
+## App wiring
 
 ```text
-user logs in -> query app_users -> query user_devices -> show assigned devices only
-ESP32 upload -> verify device token -> upsert device_status_latest -> insert device_events
+user logs in  -> server calls supabase.auth.signInWithPassword
+              -> encrypted session stored in the __Host- cookie (no server store)
+each request  -> per-request client with the user's access token (RLS applies)
+              -> reads also filter explicitly by user_id / device_id (defense in depth)
+ESP32 upload  -> verify DEVICE_UPLOAD_TOKEN -> service-role client
+              -> resolve devices row by upload_token_hash
+              -> upsert device_status_latest + insert device_events
 ```

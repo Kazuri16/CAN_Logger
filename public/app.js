@@ -95,7 +95,7 @@ function renderAccount() {
 async function checkAuth() {
   authSession = await api("/api/auth/session");
   if (authSession.authRequired && !authSession.authConfigured) {
-    showLogin("Login is not configured. Set DASHBOARD_AUTH_EMAIL and DASHBOARD_AUTH_PASSWORD on the server.");
+    showLogin("Login is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY on the server.");
     return false;
   }
   if (!authSession.authenticated) {
@@ -235,6 +235,13 @@ async function refreshFiles() {
 
 async function saveProfile(event) {
   event.preventDefault();
+  if (authSession?.mode === "cloud") {
+    // Cloud profile is managed by the dashboard host (environment config); the
+    // server rejects POST /api/profile with 403 in this mode.
+    applyServiceMode();
+    $("#testResult").textContent = "Settings are managed by the dashboard host in cloud mode.";
+    return;
+  }
   profile = await api("/api/profile", {
     method: "POST",
     headers: { "content-type": "application/json" },
