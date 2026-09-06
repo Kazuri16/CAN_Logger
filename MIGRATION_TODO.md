@@ -19,12 +19,14 @@ optional claude.ai Artifact preview of the dashboard.
 - [x] Add a "Deploying to Vercel" section to `README.md`
 - [x] Draft `artifact/dashboard.html` (static, read-only preview) and
       `artifact/README.md`
+- [x] Run independent code review on the full diff before merge (subagent
+      review; findings fixed in a follow-up commit on this branch — see PR
+      description)
 
 ## Still to do (human / follow-up)
 
 - [ ] Push `publish-clean` to origin and rebase this PR onto it, if that
       branch exists and supersedes `main` (see PR description for base notes)
-- [ ] Run independent code review on the full diff before merge
 - [ ] Publish `artifact/dashboard.html` via the artifact skill (human,
       interactive session) after setting `BASE_URL`
 - [ ] `vercel link` + set env vars (`DASHBOARD_MODE`, `DASHBOARD_AUTH`,
