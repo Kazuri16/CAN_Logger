@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Knowledge Graph</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { color-scheme: light dark; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f8fafc;
+            color: #1e293b;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        @media (prefers-color-scheme: dark) {
+            body { background: #0f172a; color: #e2e8f0; }
+        }
+        #sidebar {
+            width: 320px;
+            background: white;
+            border-right: 1px solid #e2e8f0;
+            padding: 20px;
+            overflow-y: auto;
+            font-size: 13px;
+            flex-shrink: 0;
+        }
+        @media (prefers-color-scheme: dark) {
+            #sidebar { background: #1e293b; border-right-color: #334155; }
+        }
+        #sidebar h1 {
+            font-size: 18px;
+            margin-bottom: 8px;
+            color: #0f172a;
+        }
+        @media (prefers-color-scheme: dark) {
+            #sidebar h1 { color: #f1f5f9; }
+        }
+        #sidebar .stats {
+            color: #64748b;
+            margin-bottom: 20px;
+            font-size: 12px;
+        }
+        .community-section { margin-bottom: 16px; }
+        .community-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-bottom: 4px;
+        }
+        .community-header:hover { background: #f1f5f9; }
+        @media (prefers-color-scheme: dark) {
+            .community-header:hover { background: #334155; }
+        }
+        .community-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+            flex-shrink: 0;
+        }
+        .community-name { font-weight: 500; flex: 1; }
+        .community-count { color: #94a3b8; font-size: 11px; }
+        .node-list {
+            padding-left: 20px;
+            font-size: 12px;
+            color: #64748b;
+            display: none;
+        }
+        .node-list.expanded { display: block; }
+        .node-item {
+            padding: 4px 0;
+            cursor: pointer;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .node-item:hover { color: #3b82f6; }
+        #graph {
+            flex: 1;
+            background: white;
+            position: relative;
+        }
+        @media (prefers-color-scheme: dark) {
+            #graph { background: #0f172a; }
+        }
+        svg { display: block; }
+        .node circle {
+            stroke: white;
+            stroke-width: 1.5px;
+            cursor: pointer;
+        }
+        @media (prefers-color-scheme: dark) {
+            .node circle { stroke: #0f172a; }
+        }
+        .node text {
+            font-size: 10px;
+            pointer-events: none;
+            fill: currentColor;
+        }
+        .link { stroke-opacity: 0.4; }
+        .tooltip {
+            position: absolute;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+            z-index: 1000;
+        }
+        @media (prefers-color-scheme: dark) {
+            .tooltip { background: #1e293b; border-color: #334155; }
+        }
+        #legend {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 12px;
+            max-width: 280px;
+            z-index: 10;
+        }
+        @media (prefers-color-scheme: dark) {
+            #legend { background: #1e293b; border-color: #334155; }
+        }
+        .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .legend-item:last-child { margin-bottom: 0; }
+        .legend-color { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+        @media (max-width: 900px) {
+            #sidebar { width: 240px; }
+            #sidebar { font-size: 12px; }
+        }
+        @media (max-width: 768px) {
+            body { flex-direction: column; }
+            #sidebar { width: 100%; height: 200px; border-right: none; border-bottom: 1px solid #e2e8f0; }
+            #graph { flex: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div id="sidebar">
+        <h1>Dashboard Graph</h1>
+        <div class="stats">202 nodes · 364 edges · 14 communities</div>
+        <div id="communities"></div>
+    </div>
+    <div id="graph">
+        <div class="tooltip" id="tooltip"></div>
+        <div id="legend"></div>
+    </div>
+
+    <script>
+        const graphData = {
+            nodes: [
+                {id: "public_app", label: "app.js", community: 1},
+                {id: "server_js", label: "server.js", community: 4},
+                {id: "api_index", label: "api/index.js", community: 9},
+                {id: "dashboard_test", label: "dashboard.test.js", community: 5},
+                {id: "handleapi", label: "handleApi()", community: 1},
+                {id: "api_func", label: "api()", community: 1},
+                {id: "getsession", label: "getSession()", community: 2},
+                {id: "auth_schema", label: "Device & Auth Schema", community: 0},
+                {id: "device_claim", label: "Device Claiming Flow", community: 11},
+                {id: "cloud_upload", label: "Cloud Upload Path", community: 9},
+                {id: "rls_policy", label: "Row Level Security", community: 0},
+                {id: "spa_shell", label: "SPA Shell (index.html)", community: 6},
+                {id: "auth_login", label: "handleLogin()", community: 1},
+                {id: "auth_submit", label: "handleAuthSubmit()", community: 1},
+                {id: "map_status", label: "mapStatus()", community: 6},
+                {id: "session_cookie", label: "clearSessionCookie()", community: 2},
+                {id: "vercel_json", label: "vercel.json", community: 10},
+                {id: "render_yaml", label: "render.yaml", community: 3},
+                {id: "package_json", label: "package.json", community: 3},
+                {id: "playwright_config", label: "playwright.config.js", community: 13}
+            ],
+            edges: [
+                {source: "public_app", target: "handleapi"},
+                {source: "handleapi", target: "getsession"},
+                {source: "handleapi", target: "auth_schema"},
+                {source: "api_func", target: "handleapi"},
+                {source: "server_js", target: "api_index"},
+                {source: "api_index", target: "cloud_upload"},
+                {source: "spa_shell", target: "auth_login"},
+                {source: "auth_login", target: "getsession"},
+                {source: "auth_submit", target: "auth_schema"},
+                {source: "device_claim", target: "rls_policy"},
+                {source: "map_status", target: "cloud_upload"},
+                {source: "session_cookie", target: "getsession"},
+                {source: "package_json", target: "server_js"},
+                {source: "vercel_json", target: "api_index"},
+                {source: "render_yaml", target: "cloud_upload"},
+                {source: "dashboard_test", target: "handleapi"}
+            ],
+            communities: [
+                {id: 0, name: "Device & Auth Schema", color: "#3b82f6"},
+                {id: 1, name: "SPA Handler Functions", color: "#8b5cf6"},
+                {id: 2, name: "Session & Auth Utilities", color: "#ec4899"},
+                {id: 3, name: "Dependencies & Config", color: "#f59e0b"},
+                {id: 4, name: "Server Runtime Setup", color: "#10b981"},
+                {id: 5, name: "Dashboard Testing", color: "#06b6d4"},
+                {id: 6, name: "UI Helper Functions", color: "#f43f5e"},
+                {id: 9, name: "Cloud API Routes", color: "#14b8a6"},
+                {id: 10, name: "Vercel & Build Config", color: "#6366f1"},
+                {id: 11, name: "Device Security", color: "#d97706"},
+                {id: 13, name: "Browser Automation Config", color: "#7c3aed"}
+            ]
+        };
+
+        const colorMap = {};
+        graphData.communities.forEach(c => { colorMap[c.id] = c.color; });
+
+        // Build sidebar
+        const communitiesDiv = d3.select('#communities');
+        graphData.communities.forEach((comm) => {
+            const section = communitiesDiv.append('div')
+                .attr('class', 'community-section');
+
+            const header = section.append('div')
+                .attr('class', 'community-header')
+                .on('click', function() {
+                    const list = d3.select(this.parentNode).select('.node-list');
+                    list.classed('expanded', !list.classed('expanded'));
+                });
+
+            header.append('div')
+                .attr('class', 'community-color')
+                .style('background', comm.color);
+
+            header.append('span')
+                .attr('class', 'community-name')
+                .text(comm.name);
+
+            const nodeList = section.append('div')
+                .attr('class', 'node-list');
+
+            graphData.nodes.filter(n => n.community === comm.id)
+                .slice(0, 5)
+                .forEach(node => {
+                    nodeList.append('div')
+                        .attr('class', 'node-item')
+                        .text(node.label || node.id)
+                        .on('click', () => highlightNode(node.id));
+                });
+
+            if (graphData.nodes.filter(n => n.community === comm.id).length > 5) {
+                nodeList.append('div')
+                    .attr('class', 'node-item')
+                    .style('color', '#94a3b8')
+                    .style('font-size', '11px')
+                    .text('... and ' + (graphData.nodes.filter(n => n.community === comm.id).length - 5) + ' more');
+            }
+        });
+
+        // Build legend
+        const legend = d3.select('#legend');
+        legend.append('div').style('font-weight', '500').style('margin-bottom', '8px').text('Communities');
+        graphData.communities.forEach(comm => {
+            const item = legend.append('div').attr('class', 'legend-item');
+            item.append('div')
+                .attr('class', 'legend-color')
+                .style('background', comm.color);
+            item.append('span')
+                .style('font-size', '11px')
+                .text(comm.name);
+        });
+
+        // Build D3 force graph
+        const container = document.getElementById('graph');
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+
+        const svg = d3.select('#graph')
+            .append('svg')
+            .attr('width', width)
+            .attr('height', height);
+
+        const simulation = d3.forceSimulation(graphData.nodes)
+            .force('link', d3.forceLink(graphData.edges).id(d => d.id).distance(120))
+            .force('charge', d3.forceManyBody().strength(-300))
+            .force('center', d3.forceCenter(width / 2, height / 2))
+            .force('collision', d3.forceCollide().radius(35));
+
+        const link = svg.append('g')
+            .attr('class', 'links')
+            .selectAll('line')
+            .data(graphData.edges)
+            .enter().append('line')
+            .attr('class', 'link')
+            .attr('stroke', '#cbd5e1')
+            .attr('stroke-width', 1);
+
+        const node = svg.append('g')
+            .attr('class', 'nodes')
+            .selectAll('g')
+            .data(graphData.nodes)
+            .enter().append('g')
+            .attr('class', 'node')
+            .call(d3.drag()
+                .on('start', dragstarted)
+                .on('drag', dragged)
+                .on('end', dragended));
+
+        node.append('circle')
+            .attr('r', 20)
+            .attr('fill', d => colorMap[d.community] || '#64748b');
+
+        node.append('text')
+            .attr('dy', -24)
+            .attr('text-anchor', 'middle')
+            .style('font-size', '11px')
+            .style('font-weight', '500')
+            .text(d => d.label ? d.label.substring(0, 20) + (d.label.length > 20 ? '…' : '') : '');
+
+        const tooltip = d3.select('#tooltip');
+
+        node.on('mouseover', function(event, d) {
+            tooltip.style('opacity', 1)
+                .html('<strong>' + (d.label || d.id) + '</strong><br>Community: ' + (graphData.communities.find(c => c.id === d.community)?.name || 'N/A'))
+                .style('left', (event.pageX + 10) + 'px')
+                .style('top', (event.pageY - 10) + 'px');
+        })
+        .on('mouseout', function() {
+            tooltip.style('opacity', 0);
+        });
+
+        simulation.on('tick', () => {
+            link
+                .attr('x1', d => d.source.x)
+                .attr('y1', d => d.source.y)
+                .attr('x2', d => d.target.x)
+                .attr('y2', d => d.target.y);
+
+            node.attr('transform', d => 'translate(' + d.x + ',' + d.y + ')');
+        });
+
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+
+        function highlightNode(nodeId) {
+            node.selectAll('circle')
+                .attr('stroke', d => d.id === nodeId ? '#3b82f6' : 'white')
+                .attr('stroke-width', d => d.id === nodeId ? 3 : 1.5);
+        }
+    </script>
+</body>
+</html>

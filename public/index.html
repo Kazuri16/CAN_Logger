@@ -1,276 +1,529 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Vehicle Health Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@latest/dist/css/tabler.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <link rel="stylesheet" href="/styles.css">
   </head>
-  <body>
-    <section class="login-screen" id="loginScreen" hidden>
-      <form class="login-card" id="loginForm">
-        <div class="brand login-brand">
-          <div class="brand-mark">CL</div>
-          <div>
-            <strong>CAN Logger</strong>
-            <span>Vehicle Health Dashboard</span>
+  <body class="layout-boxed" data-theme="light">
+    <!-- Login Screen -->
+    <div class="page page-center" id="loginScreen" hidden>
+      <div class="container container-tight">
+        <div class="text-center mb-4">
+          <a href="/" class="logo logo-expanded">
+            <span class="logo-icon bg-primary text-white rounded" style="width:48px;height:48px;display:inline-flex;align-items:center;justify-content:center;font-weight:800">CL</span>
+            <span class="logo-text">CAN Logger</span>
+          </a>
+          <p class="text-muted mt-2">Vehicle Health Dashboard</p>
+        </div>
+        <div class="card card-md">
+          <div class="card-body">
+            <h2 class="card-title text-center mb-4" id="loginTitle">Sign in</h2>
+            <p class="text-muted text-center mb-4" id="loginDescription">Use the email and password assigned to this vehicle dashboard.</p>
+            <form class="card-body" id="loginForm" onsubmit="return false;">
+              <div class="mb-3">
+                <label class="form-label">Email</label>
+                <input type="email" class="form-control" id="loginEmail" name="email" autocomplete="username" required placeholder="customer@example.com">
+                <div class="form-hint" id="emailHint"></div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Password</label>
+                <input type="password" class="form-control" id="loginPassword" name="password" autocomplete="current-password" required placeholder="Dashboard password">
+                <div id="passwordStrength" class="mt-2" hidden>
+                  <div class="progress" style="height: 4px;">
+                    <div class="progress-bar" id="strengthBar" role="progressbar" style="width: 0%"></div>
+                  </div>
+                  <small class="form-hint" id="strengthLabel"></small>
+                </div>
+                <div class="form-hint" id="passwordHint"></div>
+              </div>
+              <div class="mb-3" id="confirmPasswordRow" hidden>
+                <label class="form-label">Confirm password</label>
+                <input type="password" class="form-control" id="confirmPassword" name="confirmPassword" autocomplete="new-password" placeholder="Re-enter password">
+                <div class="form-hint" id="confirmHint"></div>
+              </div>
+              <div class="form-footer">
+                <button type="submit" class="btn btn-primary w-100" id="authSubmit">Sign in</button>
+              </div>
+              <div class="text-center mt-3">
+                <button type="button" class="btn btn-link text-primary" id="authToggle">New here? Create an account</button>
+              </div>
+              <div class="mt-3">
+                <div class="alert alert-info" id="loginMessage" role="alert">Enter your dashboard account details.</div>
+              </div>
+            </form>
           </div>
-        </div>
-        <div>
-          <p class="eyebrow">Customer access</p>
-          <h1>Sign in</h1>
-          <p class="login-copy">Use the email and password assigned to this vehicle dashboard.</p>
-        </div>
-        <label>
-          Email
-          <input id="loginEmail" name="email" type="email" autocomplete="username" required placeholder="customer@example.com">
-          <span class="field-hint" id="emailHint"></span>
-        </label>
-        <label>
-          Password
-          <input id="loginPassword" name="password" type="password" autocomplete="current-password" required placeholder="Dashboard password">
-          <div class="password-strength" id="passwordStrength" hidden>
-            <div class="strength-bars">
-              <span class="strength-bar" id="bar1"></span>
-              <span class="strength-bar" id="bar2"></span>
-              <span class="strength-bar" id="bar3"></span>
-              <span class="strength-bar" id="bar4"></span>
-            </div>
-            <span class="strength-label" id="strengthLabel"></span>
-          </div>
-          <span class="field-hint" id="passwordHint"></span>
-        </label>
-        <div class="confirm-password-row" id="confirmPasswordRow" hidden>
-          <label class="full-width">
-            Confirm password
-            <input id="confirmPassword" name="confirmPassword" type="password" autocomplete="new-password" placeholder="Re-enter password">
-            <span class="field-hint" id="confirmHint"></span>
-          </label>
-        </div>
-        <button class="primary-button" type="submit" id="authSubmit">Sign in</button>
-        <button class="text-button" type="button" id="authToggle">New here? Create an account</button>
-        <div class="test-result" id="loginMessage">Enter your dashboard account details.</div>
-      </form>
-    </section>
-    <section class="login-screen" id="claimScreen" hidden>
-      <form class="login-card" id="claimForm">
-        <div class="brand login-brand">
-          <div class="brand-mark">CL</div>
-          <div>
-            <strong>CAN Logger</strong>
-            <span>Connect your device</span>
-          </div>
-        </div>
-        <div>
-          <p class="eyebrow">One-time setup</p>
-          <h1>Connect your device</h1>
-          <p class="login-copy">Enter the Device ID and claim code from your CAN Logger or installer. The device must have powered on and sent at least one cloud update.</p>
-        </div>
-        <label>
-          Device ID
-          <input id="claimDeviceId" name="deviceId" required placeholder="e.g. esp-1a2b3c">
-        </label>
-        <label>
-          Claim code
-          <input id="claimCode" name="claimCode" required placeholder="Claim code">
-        </label>
-        <button class="primary-button" type="submit">Connect device</button>
-        <button class="text-button" type="button" id="claimLogout">Sign out</button>
-        <div class="test-result" id="claimMessage">This links the device to your account.</div>
-      </form>
-    </section>
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-mark">CL</div>
-        <div>
-          <strong>CAN Logger</strong>
-          <span>Vehicle Health</span>
         </div>
       </div>
-      <nav aria-label="Main">
-        <button class="nav-item active" data-page="home">Home</button>
-        <button class="nav-item" data-page="alerts">Alerts</button>
-        <button class="nav-item" data-page="reports">Reports</button>
-        <button class="nav-item" data-page="settings">Settings</button>
-        <button class="nav-item" data-page="location">Location</button>
-      </nav>
-      <div class="connection-pill" id="connectionPill">Checking logger...</div>
-    </aside>
+    </div>
 
-    <main class="app">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">PC-hosted dashboard</p>
-          <h1 id="pageTitle">Home</h1>
+    <!-- Device Claim Screen -->
+    <div class="page page-center" id="claimScreen" hidden>
+      <div class="container container-tight">
+        <div class="text-center mb-4">
+          <a href="/" class="logo logo-expanded">
+            <span class="logo-icon bg-primary text-white rounded" style="width:48px;height:48px;display:inline-flex;align-items:center;justify-content:center;font-weight:800">CL</span>
+            <span class="logo-text">CAN Logger</span>
+          </a>
+          <p class="text-muted mt-2">Connect your device</p>
         </div>
-        <div class="top-actions">
-          <button class="icon-button" id="refreshButton" title="Refresh">Refresh</button>
-          <span class="account-pill" id="accountPill">Guest</span>
-          <button class="secondary-button" id="logoutButton" type="button">Logout</button>
-          <button class="primary-button" id="connectShortcut">Connect</button>
-        </div>
-      </header>
-
-      <section class="setup-banner" id="setupBanner">
-        <div>
-          <strong>Connect your logger</strong>
-          <span>Enter `canlogger.local` or the ESP32 IP address in Settings, then click Test connection.</span>
-        </div>
-        <button class="secondary-button" data-page-jump="settings">Open Settings</button>
-      </section>
-
-      <section class="page active" id="homePage">
-        <div class="health-band">
-          <div>
-            <p class="eyebrow">Vehicle health</p>
-            <h2 id="healthText">Loading...</h2>
-            <p id="activeAlertText">Waiting for logger status.</p>
-          </div>
-          <div class="health-gauge" id="healthGauge">OK</div>
-        </div>
-
-        <div class="summary-grid">
-          <article class="metric-panel">
-            <span>Monitoring status</span>
-            <strong id="monitoringStatus">--</strong>
-          </article>
-          <article class="metric-panel">
-            <span>Vehicle state</span>
-            <strong id="vehicleState">--</strong>
-          </article>
-          <article class="metric-panel">
-            <span>Latest event</span>
-            <strong id="latestEvent">--</strong>
-          </article>
-          <article class="metric-panel">
-            <span>Logger connection</span>
-            <strong id="loggerConnection">--</strong>
-          </article>
-        </div>
-
-        <div class="work-grid">
-          <section class="panel">
-            <div class="panel-header">
-              <h3>Live Signals</h3>
-              <span id="updatedAt">--</span>
-            </div>
-            <div class="signal-list">
-              <div><span>Speed</span><strong id="speedSignal">--</strong></div>
-              <div><span>Brake pressure</span><strong id="brakeSignal">--</strong></div>
-              <div><span>Acceleration</span><strong id="accelSignal">--</strong></div>
-              <div><span>Events</span><strong id="eventSignal">--</strong></div>
-            </div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-header">
-              <h3>Recent Alerts</h3>
-              <button class="text-button" data-page-jump="alerts">View all</button>
-            </div>
-            <div id="homeAlerts" class="alert-list"></div>
-          </section>
-        </div>
-      </section>
-
-      <section class="page" id="alertsPage">
-        <div class="panel">
-          <div class="panel-header">
-            <h3>Customer Alerts</h3>
-            <span>Service details stay hidden unless service mode is enabled.</span>
-          </div>
-          <div id="alertsList" class="alert-list"></div>
-        </div>
-      </section>
-
-      <section class="page" id="reportsPage">
-        <div class="work-grid">
-          <section class="panel">
-            <div class="panel-header">
-              <h3>Session Summary</h3>
-              <button class="primary-button" id="downloadReport">Download report</button>
-            </div>
-            <div class="summary-grid compact">
-              <article class="metric-panel"><span>Start time</span><strong id="sessionStart">Current session</strong></article>
-              <article class="metric-panel"><span>Duration</span><strong id="sessionDuration">Live</strong></article>
-              <article class="metric-panel"><span>Event count</span><strong id="reportEvents">--</strong></article>
-              <article class="metric-panel"><span>Fault count</span><strong id="reportFaults">--</strong></article>
-            </div>
-          </section>
-          <section class="panel">
-            <div class="panel-header">
-              <h3>Available Files</h3>
-              <button class="secondary-button" id="refreshFiles">Refresh files</button>
-            </div>
-            <div id="fileList" class="file-list"></div>
-          </section>
-        </div>
-      </section>
-
-      <section class="page" id="settingsPage">
-        <div class="settings-layout">
-          <form class="panel settings-form" id="profileForm">
-            <div class="panel-header">
-              <h3>Logger Profile</h3>
-              <span>Use `canlogger.local` or the ESP32 IP address.</span>
-            </div>
-            <label>
-              Logger address
-              <input id="loggerAddress" name="address" placeholder="canlogger.local">
-            </label>
-            <label>
-              Device name
-              <input id="deviceName" name="deviceName" placeholder="Family Vehicle">
-            </label>
-            <label>
-              Optional access token
-              <input id="token" name="token" type="password" placeholder="Leave blank unless configured">
-            </label>
-            <label class="toggle-row">
-              <input id="serviceMode" name="serviceMode" type="checkbox">
-              <span>Service mode</span>
-            </label>
-            <div class="button-row">
-              <button class="primary-button" type="submit">Save profile</button>
-              <button class="secondary-button" type="button" id="testConnection">Test connection</button>
-            </div>
-            <div class="test-result" id="testResult">No connection test run yet.</div>
-          </form>
-
-          <section class="panel">
-            <div class="panel-header">
-              <h3>Troubleshooting</h3>
-            </div>
-            <ul class="check-list">
-              <li>PC and ESP32 must be on the same WiFi network.</li>
-              <li>Use `canlogger.local`; if it fails, use the IP printed in Serial Monitor.</li>
-              <li>ESP32 works on 2.4 GHz WiFi networks.</li>
-              <li>If the logger is off, the dashboard shows demo-style fallback data.</li>
-            </ul>
-          </section>
-        </div>
-      </section>
-
-      <section class="page" id="locationPage">
-        <div class="location-shell">
-          <div>
-            <p class="eyebrow">Future Location</p>
-            <h2>GPS not connected</h2>
-            <p>The dashboard is ready for last known location, event location, map marker, and trip route fields when the GPS module is added later.</p>
-          </div>
-          <div class="map-placeholder">
-            <div class="map-grid"></div>
-            <div class="map-marker">Coming soon</div>
+        <div class="card card-md">
+          <div class="card-body">
+            <h2 class="card-title text-center mb-4">Connect your device</h2>
+            <p class="text-muted text-center mb-4">Enter the Device ID and claim code from your CAN Logger or installer. The device must have powered on and sent at least one cloud update.</p>
+            <form id="claimForm" onsubmit="return false;">
+              <div class="mb-3">
+                <label class="form-label">Device ID</label>
+                <input type="text" class="form-control" id="claimDeviceId" name="deviceId" required placeholder="e.g. esp-1a2b3c">
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Claim code</label>
+                <input type="text" class="form-control" id="claimCode" name="claimCode" required placeholder="Claim code">
+              </div>
+              <div class="form-footer">
+                <button type="submit" class="btn btn-primary w-100">Connect device</button>
+              </div>
+              <div class="text-center mt-3">
+                <button type="button" class="btn btn-link text-muted" id="claimLogout">Sign out</button>
+              </div>
+              <div class="mt-3">
+                <div class="alert alert-info" id="claimMessage" role="alert">This links the device to your account.</div>
+              </div>
+            </form>
           </div>
         </div>
-        <div class="summary-grid">
-          <article class="metric-panel"><span>GPS status</span><strong id="gpsStatus">Not connected</strong></article>
-          <article class="metric-panel"><span>Last known location</span><strong id="lastLocation">Unavailable</strong></article>
-          <article class="metric-panel"><span>Map marker</span><strong>Ready</strong></article>
-          <article class="metric-panel"><span>Trip route</span><strong>Ready</strong></article>
-        </div>
-      </section>
-    </main>
+      </div>
+    </div>
 
+    <!-- Main App Layout -->
+    <div class="page" id="mainApp">
+      <!-- Sidebar -->
+      <div class="sidebar sidebar-dark" data-bs-theme="dark">
+        <div class="sidebar-brand">
+          <span class="logo-icon bg-primary text-white rounded" style="width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:14px">CL</span>
+          <span class="logo-text">CAN Logger</span>
+        </div>
+        <div class="sidebar-nav">
+          <nav aria-label="Main">
+            <button class="nav-link active" data-page="home">
+              <svg xmlns="http://www.w3.org/2000/svg" class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+              Home
+            </button>
+            <button class="nav-link" data-page="alerts">
+              <svg xmlns="http://www.w3.org/2000/svg" class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+              Alerts
+            </button>
+            <button class="nav-link" data-page="reports">
+              <svg xmlns="http://www.w3.org/2000/svg" class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+              Reports
+            </button>
+            <button class="nav-link" data-page="settings">
+              <svg xmlns="http://www.w3.org/2000/svg" class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+              Settings
+            </button>
+            <button class="nav-link" data-page="location">
+              <svg xmlns="http://www.w3.org/2000/svg" class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line></svg>
+              Location
+            </button>
+            <button class="nav-link" data-page="ai">
+              <svg xmlns="http://www.w3.org/2000/svg" class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 4a6 6 0 1 1-6 6 6 6 0 0 1 6-6zm0 2a4 4 0 1 0 4 4 4 4 0 0 0-4-4z"></path></svg>
+              AI Assistant
+            </button>
+          </nav>
+        </div>
+        <div class="sidebar-footer">
+          <div class="badge bg-status-connected" id="connectionPill">Checking logger...</div>
+        </div>
+      </div>
+
+      <!-- Main Content -->
+      <div class="page-wrapper">
+        <!-- Topbar -->
+        <div class="page-header">
+          <div class="d-flex">
+            <h2 class="page-title" id="pageTitle">Home</h2>
+          </div>
+          <div class="navbar-nav flex-row ms-auto align-items-center">
+            <button class="btn btn-icon" id="refreshButton" title="Refresh">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            </button>
+            <button class="btn btn-icon" id="themeToggle" title="Toggle theme">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg>
+            </button>
+            <span class="nav-item" id="accountPill">Guest</span>
+            <button class="btn btn-secondary" id="logoutButton">Logout</button>
+            <button class="btn btn-primary" id="connectShortcut">Connect</button>
+          </div>
+        </div>
+
+        <div class="page-body">
+          <!-- Setup Banner -->
+          <div class="container-xl" id="setupBanner" hidden>
+            <div class="alert alert-warning alert-dismissible" role="alert">
+              <div><strong>Connect your logger</strong><span>Enter `canlogger.local` or the ESP32 IP address in Settings, then click Test connection.</span></div>
+              <a class="btn btn-secondary ms-2" data-page-jump="settings">Open Settings</a>
+              <a class="btn-close" data-bs-dismiss="alert" aria-label="close"></a>
+            </div>
+          </div>
+
+          <!-- Home Page -->
+          <div class="container-xl" id="homePage">
+            <div class="row row-deck row-cards">
+              <div class="col-12">
+                <div class="card" id="healthCard">
+                  <div class="card-body">
+                    <div class="row align-items-center">
+                      <div class="col">
+                        <div class="text-muted small">Vehicle health</div>
+                        <div class="h2 mb-1" id="healthText">Loading...</div>
+                        <div class="text-muted" id="activeAlertText">Waiting for logger status.</div>
+                      </div>
+                      <div class="col-auto">
+                        <div class="avatar avatar-xl bg-primary-subtle text-primary rounded-circle d-flex align-items-center justify-content-center" id="healthGauge" style="font-size:24px;font-weight:700">OK</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-sm-6 col-lg-3">
+                <div class="card">
+                  <div class="card-body">
+                    <div class="text-muted small">Monitoring status</div>
+                    <div class="h2 mb-0" id="monitoringStatus">--</div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-sm-6 col-lg-3">
+                <div class="card">
+                  <div class="card-body">
+                    <div class="text-muted small">Vehicle state</div>
+                    <div class="h2 mb-0" id="vehicleState">--</div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-sm-6 col-lg-3">
+                <div class="card">
+                  <div class="card-body">
+                    <div class="text-muted small">Latest event</div>
+                    <div class="h2 mb-0" id="latestEvent">--</div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-sm-6 col-lg-3">
+                <div class="card">
+                  <div class="card-body">
+                    <div class="text-muted small">Logger connection</div>
+                    <div class="h2 mb-0" id="loggerConnection">--</div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-lg-8">
+                <div class="card">
+                  <div class="card-header">
+                    <h3 class="card-title">Live Signals</h3>
+                    <span class="text-muted" id="updatedAt">--</span>
+                  </div>
+                  <div class="card-body border-bottom py-3">
+                    <div class="list-group list-group-flush" id="signalList">
+                      <div class="list-group-item d-flex justify-content-between"><span>Speed</span><strong id="speedSignal">--</strong></div>
+                      <div class="list-group-item d-flex justify-content-between"><span>Brake pressure</span><strong id="brakeSignal">--</strong></div>
+                      <div class="list-group-item d-flex justify-content-between"><span>Acceleration</span><strong id="accelSignal">--</strong></div>
+                      <div class="list-group-item d-flex justify-content-between"><span>Events</span><strong id="eventSignal">--</strong></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-lg-4">
+                <div class="card">
+                  <div class="card-header">
+                    <h3 class="card-title">Recent Alerts</h3>
+                    <a href="#" class="btn btn-link btn-sm" data-page-jump="alerts">View all</a>
+                  </div>
+                  <div class="card-body">
+                    <div id="homeAlerts"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Alerts Page -->
+          <div class="container-xl" id="alertsPage" hidden>
+            <div class="card">
+              <div class="card-header">
+                <h3 class="card-title">Customer Alerts</h3>
+                <span class="text-muted">Service details stay hidden unless service mode is enabled.</span>
+              </div>
+              <div class="card-body">
+                <div id="alertsList"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Reports Page -->
+          <div class="container-xl" id="reportsPage" hidden>
+            <div class="row row-deck row-cards">
+              <div class="col-lg-8">
+                <div class="card">
+                  <div class="card-header">
+                    <h3 class="card-title">Session Summary</h3>
+                    <button class="btn btn-primary" id="downloadReport">Download report</button>
+                  </div>
+                  <div class="card-body">
+                    <div class="row row-cards">
+                      <div class="col-sm-6 col-lg-3">
+                        <div class="card">
+                          <div class="card-body">
+                            <div class="text-muted small">Start time</div>
+                            <div class="h5 mb-0" id="sessionStart">Current session</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="col-sm-6 col-lg-3">
+                        <div class="card">
+                          <div class="card-body">
+                            <div class="text-muted small">Duration</div>
+                            <div class="h5 mb-0" id="sessionDuration">Live</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="col-sm-6 col-lg-3">
+                        <div class="card">
+                          <div class="card-body">
+                            <div class="text-muted small">Event count</div>
+                            <div class="h5 mb-0" id="reportEvents">--</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="col-sm-6 col-lg-3">
+                        <div class="card">
+                          <div class="card-body">
+                            <div class="text-muted small">Fault count</div>
+                            <div class="h5 mb-0" id="reportFaults">--</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-lg-4">
+                <div class="card">
+                  <div class="card-header">
+                    <h3 class="card-title">Available Files</h3>
+                    <button class="btn btn-secondary btn-sm" id="refreshFiles">Refresh files</button>
+                  </div>
+                  <div class="card-body">
+                    <div id="fileList"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Settings Page -->
+          <div class="container-xl" id="settingsPage" hidden>
+            <div class="row row-deck row-cards">
+              <div class="col-lg-8">
+                <div class="card">
+                  <div class="card-header">
+                    <h3 class="card-title">Logger Profile</h3>
+                    <span class="text-muted">Use `canlogger.local` or the ESP32 IP address.</span>
+                  </div>
+                  <div class="card-body">
+                    <form id="profileForm">
+                      <div class="mb-3">
+                        <label class="form-label">Logger address</label>
+                        <input type="text" class="form-control" id="loggerAddress" name="address" placeholder="canlogger.local">
+                      </div>
+                      <div class="mb-3">
+                        <label class="form-label">Device name</label>
+                        <input type="text" class="form-control" id="deviceName" name="deviceName" placeholder="Family Vehicle">
+                      </div>
+                      <div class="mb-3">
+                        <label class="form-label">Optional access token</label>
+                        <input type="password" class="form-control" id="token" name="token" placeholder="Leave blank unless configured">
+                      </div>
+                      <div class="mb-3">
+                        <div class="form-check">
+                          <input class="form-check-input" type="checkbox" id="serviceMode" name="serviceMode">
+                          <label class="form-check-label" for="serviceMode">Service mode</label>
+                        </div>
+                      </div>
+                      <div class="form-footer">
+                        <button type="submit" class="btn btn-primary">Save profile</button>
+                        <button type="button" class="btn btn-secondary" id="testConnection">Test connection</button>
+                      </div>
+                      <div class="mt-3">
+                        <div class="alert alert-info" id="testResult" role="alert">No connection test run yet.</div>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              </div>
+              <div class="col-lg-4">
+                <div class="card">
+                  <div class="card-header">
+                    <h3 class="card-title">Troubleshooting</h3>
+                  </div>
+                  <div class="card-body">
+                    <ul class="list-unstyled space-y-2">
+                      <li>PC and ESP32 must be on the same WiFi network.</li>
+                      <li>Use `canlogger.local`; if it fails, use the IP printed in Serial Monitor.</li>
+                      <li>ESP32 works on 2.4 GHz WiFi networks.</li>
+                      <li>If the logger is off, the dashboard shows demo-style fallback data.</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Location Page (GPS Tracking) -->
+          <div class="container-xl" id="locationPage" hidden>
+            <div class="row row-deck row-cards">
+              <div class="col-lg-8">
+                <div class="card">
+                  <div class="card-header">
+                    <h3 class="card-title">Vehicle Location</h3>
+                    <span class="text-muted" id="gpsStatus">GPS not connected</span>
+                  </div>
+                  <div class="card-body p-0">
+                    <div id="map" style="height: 400px; width: 100%;"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-lg-4">
+                <div class="card">
+                  <div class="card-header">
+                    <h3 class="card-title">Location Details</h3>
+                  </div>
+                  <div class="card-body">
+                    <div class="mb-3">
+                      <div class="text-muted small">Last known location</div>
+                      <div class="h5 mb-0" id="lastLocation">Unavailable</div>
+                    </div>
+                    <div class="mb-3">
+                      <div class="text-muted small">GPS Status</div>
+                      <div class="h5 mb-0" id="gpsStatusDetail">Not connected</div>
+                    </div>
+                    <div class="mb-3">
+                      <div class="text-muted small">Map Marker</div>
+                      <div class="h5 mb-0">Ready</div>
+                    </div>
+                    <div class="mb-3">
+                      <div class="text-muted small">Trip Route</div>
+                      <div class="h5 mb-0">Ready</div>
+                    </div>
+                    <button class="btn btn-primary w-100" id="refreshLocation">Refresh Location</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI Assistant Page (Future Feature) -->
+          <div class="container-xl" id="aiPage" hidden>
+            <div class="row row-deck row-cards">
+              <div class="col-lg-8">
+                <div class="card">
+                  <div class="card-header">
+                    <h3 class="card-title">AI Assistant</h3>
+                    <span class="text-muted">Ask about your vehicle health, faults, or driving patterns</span>
+                  </div>
+                  <div class="card-body">
+                    <div id="aiChat" class="mb-3" style="height: 400px; overflow-y: auto; border: 1px solid var(--tblr-border-color); padding: 16px; border-radius: 8px;">
+                      <div class="mb-3">
+                        <div class="badge bg-primary-subtle text-primary mb-2">AI</div>
+                        <p class="mb-0">Hello! I can help you understand your vehicle's health data. Try asking:</p>
+                        <ul class="text-muted small mt-2">
+                          <li>"What do the recent alerts mean?"</li>
+                          <li>"Is there anything concerning about my driving patterns?"</li>
+                          <li>"When should I schedule maintenance?"</li>
+                        </ul>
+                      </div>
+                    </div>
+                    <div class="input-group">
+                      <input type="text" class="form-control" id="aiInput" placeholder="Ask about your vehicle...">
+                      <button class="btn btn-primary" type="button" id="aiSend">Send</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-lg-4">
+                <div class="card">
+                  <div class="card-header">
+                    <h3 class="card-title">AI Features</h3>
+                  </div>
+                  <div class="card-body">
+                    <div class="space-y-3">
+                      <div class="d-flex align-items-center">
+                        <span class="badge bg-success me-2">●</span>
+                        <div>
+                          <div class="fw-semibold">Fault Diagnosis</div>
+                          <small class="text-muted">Explain fault codes and likely causes</small>
+                        </div>
+                      </div>
+                      <div class="d-flex align-items-center">
+                        <span class="badge bg-warning me-2">●</span>
+                        <div>
+                          <div class="fw-semibold">Predictive Maintenance</div>
+                          <small class="text-muted">Predict when parts may need attention</small>
+                        </div>
+                      </div>
+                      <div class="d-flex align-items-center">
+                        <span class="badge bg-info me-2">●</span>
+                        <div>
+                          <div class="fw-semibold">Anomaly Detection</div>
+                          <small class="text-muted">Flag unusual driving patterns</small>
+                        </div>
+                      </div>
+                      <div class="d-flex align-items-center">
+                        <span class="badge bg-secondary me-2">○</span>
+                        <div>
+                          <div class="fw-semibold">Natural Language</div>
+                          <small class="text-muted">Ask questions in plain English</small>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="card mt-3">
+                  <div class="card-header">
+                    <h3 class="card-title">Local vs Cloud AI</h3>
+                  </div>
+                  <div class="card-body">
+                    <p class="text-muted small">This dashboard uses a hybrid approach:</p>
+                    <ul class="small">
+                      <li><strong>Local:</strong> Real-time anomaly detection, simple rules</li>
+                      <li><strong>Cloud:</strong> Complex queries, predictions (optional)</li>
+                    </ul>
+                    <div class="form-check form-switch mt-3">
+                      <input class="form-check-input" type="checkbox" id="aiCloudEnabled">
+                      <label class="form-check-label" for="aiCloudEnabled">Enable cloud AI</label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="page-footer">
+          <div class="container-xl">
+            <span class="text-muted">CAN Logger Dashboard</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tabler/core@latest/dist/js/tabler.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY_HERE&libraries=places"></script>
     <script src="/app.js" type="module"></script>
   </body>
 </html>

@@ -517,3 +517,195 @@ test("extra. data/ directory has no runtime writes", async () => {
   const entries = existsSync(dir) ? readdirSync(dir).filter((e) => e !== ".gitkeep") : [];
   assert.deepEqual(entries, [], "nothing written to data/");
 });
+
+// ==========================================================================
+// Device claiming (Approach A: server-mediated signup + claim)
+// ==========================================================================
+
+async function signup(base, body, headers = {}) {
+  const res = await fetch(`${base}/api/auth/signup`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify(body)
+  });
+  return { res, body: await res.json().catch(() => null), setCookie: res.headers.getSetCookie() };
+}
+
+async function claim(base, cookie, body, headers = {}) {
+  const res = await fetch(`${base}/api/devices/claim`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}), ...headers },
+    body: JSON.stringify(body)
+  });
+  return { res, body: await res.json().catch(() => null) };
+}
+
+const GOOD_SIGNUP = { email: "new@example.com", password: "at-least-8-chars" };
+const GOOD_CLAIM = { deviceId: "esp-1", claimCode: "claim-code-test" };
+
+// 22. signup -> signUp() called with emailRedirectTo, no session cookie, needs confirm
+test("22. POST /api/auth/signup -> 200 {ok,emailConfirmationRequired}, signUp recorded, no Set-Cookie", async () => {
+  const s = await boot();
+  try {
+    const { res, body, setCookie } = await signup(s.base, GOOD_SIGNUP);
+    assert.equal(res.status, 200);
+    assert.equal(body.ok, true);
+    assert.equal(body.emailConfirmationRequired, true);
+    assert.equal((setCookie || []).length, 0, "no session cookie on signup");
+    const rec = s.log().find((e) => e.kind === "auth" && e.method === "signUp");
+    assert.ok(rec, "fake recorded signUp");
+    assert.match(String(rec.emailRedirectTo || ""), /^https?:\/\/.+\/$/, "emailRedirectTo passed");
+  } finally {
+    await s.stop();
+  }
+});
+
+// 23. signup is CSRF-guarded like the other state-changing POSTs
+test("23. cross-origin signup POST -> 403", async () => {
+  const s = await boot();
+  try {
+    const { res } = await signup(s.base, GOOD_SIGNUP, { origin: "http://evil.example" });
+    assert.equal(res.status, 403);
+  } finally {
+    await s.stop();
+  }
+});
+
+// 24. signup per-IP rate limit
+test("24. 6th signup from one IP -> 429", async () => {
+  const s = await boot();
+  try {
+    for (let i = 0; i < 5; i++) {
+      const { res } = await signup(s.base, { email: `u${i}@example.com`, password: "at-least-8-chars" });
+      assert.equal(res.status, 200, `signup #${i + 1}`);
+    }
+    const sixth = await signup(s.base, { email: "u6@example.com", password: "at-least-8-chars" });
+    assert.equal(sixth.res.status, 429, "6th blocked");
+  } finally {
+    await s.stop();
+  }
+});
+
+// 25. GET /api/devices lists the session user's claimed devices
+test("25. GET /api/devices -> {devices,count}; filters user_devices by user_id", async () => {
+  const s = await boot();
+  try {
+    const { setCookie } = await login(s.base);
+    const pair = (setCookie[0] || "").split(";")[0];
+    s.clearLog();
+    const r = await fetch(`${s.base}/api/devices`, { headers: { cookie: pair } });
+    assert.equal(r.status, 200);
+    const body = await r.json();
+    assert.equal(body.count, 1);
+    assert.equal(body.devices[0].id, "dev-uuid-1");
+    assert.ok(
+      s.log().some((e) => e.kind === "from" && e.table === "user_devices" && e.method === "eq" && e.args[0] === "user_id" && e.args[1] === "user-uuid-1"),
+      "user_devices eq('user_id', <session user>)"
+    );
+  } finally {
+    await s.stop();
+  }
+});
+
+// 26. claim happy path: service-role devices match + status check + user_devices upsert
+test("26. POST /api/devices/claim -> 200; devices.eq(device_id) + device_status_latest check + user_devices upsert, all service role", async () => {
+  const s = await boot();
+  try {
+    const { setCookie } = await login(s.base);
+    const pair = (setCookie[0] || "").split(";")[0];
+    s.clearLog();
+    const { res, body } = await claim(s.base, pair, GOOD_CLAIM);
+    assert.equal(res.status, 200);
+    assert.equal(body.ok, true);
+    assert.equal(body.deviceId, "esp-1");
+
+    const from = s.log().filter((e) => e.kind === "from");
+    const devEq = from.find((e) => e.table === "devices" && e.method === "eq");
+    assert.ok(devEq, "devices lookup happened");
+    assert.deepEqual([devEq.args[0], devEq.args[1]], ["device_id", "esp-1"]);
+    assert.ok(from.some((e) => e.table === "device_status_latest" && e.method === "eq"), "device_status_latest checked");
+    assert.ok(from.some((e) => e.table === "user_devices" && e.method === "upsert"), "user_devices upsert");
+    for (const e of from) {
+      assert.equal(e.role, "service", `${e.table}.${e.method} must run on the service client`);
+    }
+  } finally {
+    await s.stop();
+  }
+});
+
+// 27. wrong claim code -> 404 (same response as a wrong device id)
+test("27. claim with wrong code -> 404, no user_devices upsert", async () => {
+  const s = await boot();
+  try {
+    const { setCookie } = await login(s.base);
+    const pair = (setCookie[0] || "").split(";")[0];
+    s.clearLog();
+    const { res, body } = await claim(s.base, pair, { deviceId: "esp-1", claimCode: "wrong" });
+    assert.equal(res.status, 404);
+    assert.equal(body.ok, false);
+    assert.ok(!s.log().some((e) => e.table === "user_devices" && e.method === "upsert"), "no link written");
+  } finally {
+    await s.stop();
+  }
+});
+
+// 28. device that has never reported -> 409
+test("28. claim a device with no device_status_latest row -> 409", async () => {
+  const s = await boot({ FAKE_STATUS: "empty" });
+  try {
+    const { setCookie } = await login(s.base);
+    const pair = (setCookie[0] || "").split(";")[0];
+    const { res } = await claim(s.base, pair, GOOD_CLAIM);
+    assert.equal(res.status, 409);
+  } finally {
+    await s.stop();
+  }
+});
+
+// 29. claim without a session -> 401
+test("29. claim with no cookie -> 401", async () => {
+  const s = await boot();
+  try {
+    const { res } = await claim(s.base, null, GOOD_CLAIM);
+    assert.equal(res.status, 401);
+  } finally {
+    await s.stop();
+  }
+});
+
+// 30. claim rate limit (per IP / per user)
+test("30. 11th claim attempt -> 429", async () => {
+  const s = await boot();
+  try {
+    const { setCookie } = await login(s.base);
+    const pair = (setCookie[0] || "").split(";")[0];
+    for (let i = 0; i < 10; i++) {
+      const { res } = await claim(s.base, pair, GOOD_CLAIM);
+      assert.notEqual(res.status, 429, `claim #${i + 1} not throttled`);
+    }
+    const eleventh = await claim(s.base, pair, GOOD_CLAIM);
+    assert.equal(eleventh.res.status, 429, "11th blocked");
+  } finally {
+    await s.stop();
+  }
+});
+
+// 31. migration divergence reconciled + claiming migration present
+test("31. migrations: 0002 rpc lockdown, 0003 retention (renamed), 0004 claim_code column + index", async () => {
+  const dir = join(repoRoot, "database", "migrations");
+  const names = readdirSync(dir).sort();
+  assert.deepEqual(names, [
+    "0001_init.sql",
+    "0002_lock_down_handle_new_user_rpc.sql",
+    "0003_device_events_retention.sql",
+    "0004_device_claiming.sql"
+  ], "migration files renumbered");
+
+  const rpc = readFileSync(join(dir, "0002_lock_down_handle_new_user_rpc.sql"), "utf8");
+  assert.match(rpc, /revoke execute on function public\.handle_new_user\(\)\s+from\s+anon,\s*authenticated,\s*public/i);
+
+  const claim = readFileSync(join(dir, "0004_device_claiming.sql"), "utf8");
+  assert.match(claim, /alter table public\.devices add column if not exists claim_code text/i);
+  assert.match(claim, /create index if not exists devices_claim_code_idx/i);
+  assert.ok(!/for\s+insert/i.test(claim), "0004 adds no INSERT policy (user_devices stays service-only)");
+});

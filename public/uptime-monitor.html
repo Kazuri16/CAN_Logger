@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Uptime Monitor</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;background:#0b0c15;color:#e2e8f0}
+  .card{background:#111827;border:1px solid #334155;border-radius:12px;padding:24px;margin-bottom:16px}
+  h1{font-size:22px;margin-bottom:4px}
+  .subtitle{color:#94a3b8;font-size:13px;margin-bottom:20px}
+  .url{font-family:monospace;background:#0f172a;padding:8px 12px;border-radius:6px;border:1px solid #334155;color:#38bdf8;font-size:13px;word-break:break-all}
+  .status{display:flex;gap:12px;margin-top:16px}
+  .status .pill{padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;background:#10b981;color:#fff}
+  .status .pill.cold{background:#f59e0b;color:#fff}
+  .btn{display:inline-block;padding:10px 18px;border-radius:6px;background:#3b82f6;color:#fff;text-decoration:none;font-weight:600;font-size:13px;margin-top:12px;border:none;cursor:pointer}
+  .btn:hover{background:#2563eb}
+  pre{background:#0f172a;padding:12px;border-radius:6px;font-size:12px;overflow:auto;border:1px solid #334155}
+  .note{color:#64748b;font-size:11px;margin-top:8px}
+</style></head>
+<body>
+<div class="card"><h1>Dashboard Uptime Monitor</h1>
+<p class="subtitle">Keep <strong>https://can-logger-dnmjx9hbq-abhishek-e.vercel.app</strong> warm — Vercel serverless spins down after ~15 min idle.</p>
+<div class="url">https://can-logger-dnmjx9hbq-abhishek-e.vercel.app</div>
+<div class="status"><span class="pill">Live</span><span class="pill cold">Free tier (cold possible)</span></div>
+<p>To stay always-on, pick one:</p>
+<b>1. Cron ping (free):</b> <pre>URL: https://can-logger-dnmjx9hbq-abhishek-e.vercel.app
+Interval: every 5 minutes
+Service: cron-job.org / UptimeRobot (free tier)</pre>
+<b>2. Vercel Pro (~$20/mo):</b> Keeps functions warm, zero cold starts.<br>
+<b>3. Always-on hack:</b> Set <code>DASHBOARD_MODE=cloud</code>, use health-check endpoint.<br>
+<a class="btn" href="https://can-logger-dnmjx9hbq-abhishek-e.vercel.app" target="_blank">Open Dashboard →</a>
+<p class="note">This page is self-hosted at the Vercel deployment. It pings itself via the link above when visited. For true 24/7 uptime use Option 1 or 2.</p>
+</div>
+</body>
+</html>

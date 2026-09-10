@@ -57,7 +57,28 @@ Stop_Dashboard.bat
 Login uses Supabase Auth. The Node server calls `supabase.auth.signInWithPassword`
 with an anon-key client, then stores the returned session (encrypted with a key
 derived from `SESSION_COOKIE_SECRET`) inside an httpOnly `__Host-` cookie. There
-is no server-side session store and no signup flow in the app.
+is no server-side session store.
+
+### Self sign-up + device claiming
+
+Customers can create their own account and attach their device:
+
+1. **Sign up** — the login card has a "Create an account" toggle. `POST
+   /api/auth/signup` calls `supabase.auth.signUp` (anon-key client); Supabase
+   sends the confirmation email through the configured SMTP. No session is
+   returned, so the app just says "check your email".
+2. **Confirm + sign in** — the email link confirms the address and lands back on
+   `/`; the customer then signs in normally.
+3. **Claim the device** — a signed-in account with no devices sees a "Connect
+   your device" screen. `POST /api/devices/claim` runs on the service-role
+   client: it matches `devices.device_id` + `devices.claim_code`, requires the
+   device to have already reported (a `device_status_latest` row), then inserts
+   `user_devices(user_id, device_id, 'viewer')` (idempotent). Per-IP and
+   per-user throttled.
+
+`user_devices` still has no `INSERT` RLS policy — only the server's service-role
+path writes the link. Set `DASHBOARD_AUTH=off` (trusted LAN only) to skip login
+and claiming entirely.
 
 Environment variables (see `.env.example` for the full list):
 
@@ -114,9 +135,12 @@ In cloud mode the dashboard stores telemetry in Supabase Postgres with Row Level
 Security. See `database/`:
 
 ```text
-database/migrations/0001_init.sql   current schema + RLS
-database/seed.example.sql           wire one auth user -> device
-database/README.md                  details
+database/migrations/0001_init.sql                       schema + RLS
+database/migrations/0002_lock_down_handle_new_user_rpc.sql  revoke direct RPC on the trigger fn
+database/migrations/0003_device_events_retention.sql    cap device_events per device
+database/migrations/0004_device_claiming.sql            devices.claim_code for self-claiming
+database/seed.example.sql                               wire one auth user -> device
+database/README.md                                     details
 ```
 
 Tables: `profiles`, `devices`, `user_devices`, `device_status_latest`,

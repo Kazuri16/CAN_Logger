@@ -1,9 +1,10 @@
-﻿const pages = {
+const pages = {
   home: document.querySelector("#homePage"),
   alerts: document.querySelector("#alertsPage"),
   reports: document.querySelector("#reportsPage"),
   settings: document.querySelector("#settingsPage"),
-  location: document.querySelector("#locationPage")
+  location: document.querySelector("#locationPage"),
+  ai: document.querySelector("#aiPage")
 };
 
 const titles = {
@@ -11,7 +12,8 @@ const titles = {
   alerts: "Alerts",
   reports: "Reports",
   settings: "Settings",
-  location: "Future Location"
+  location: "Location",
+  ai: "AI Assistant"
 };
 
 let profile = {
@@ -23,6 +25,16 @@ let profile = {
 let dashboardStatus = null;
 let authSession = null;
 let authMode = "login"; // "login" | "signup"
+
+// GPS tracking state
+let map = null;
+let gpsMarker = null;
+let gpsRoute = [];
+let lastGpsData = null;
+
+// AI state
+let aiHistory = [];
+let aiCloudEnabled = false;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -40,8 +52,10 @@ function escapeHtml(value) {
 }
 
 function setPage(page) {
-  Object.entries(pages).forEach(([name, element]) => element.classList.toggle("active", name === page));
-  document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.page === page));
+  Object.entries(pages).forEach(([name, element]) => {
+    if (element) element.classList.toggle("active", name === page);
+  });
+  document.querySelectorAll(".nav-link").forEach((button) => button.classList.toggle("active", button.dataset.page === page));
   $("#pageTitle").textContent = titles[page] || "Home";
 }
 
@@ -78,6 +92,7 @@ async function api(path, options) {
 function showLogin(message = "Enter your dashboard account details.") {
   document.body.classList.add("locked");
   $("#loginScreen").hidden = false;
+  $("#mainApp").classList.add("d-none");
   $("#loginMessage").textContent = message;
   $("#loginEmail").focus();
 }
@@ -90,10 +105,13 @@ function hideLogin() {
 function setAuthMode(mode) {
   authMode = mode;
   const signup = mode === "signup";
-  $("#loginForm").querySelector("h1").textContent = signup ? "Create account" : "Sign in";
+  $("#loginTitle").textContent = signup ? "Create account" : "Sign in";
   $("#authSubmit").textContent = signup ? "Create account" : "Sign in";
   $("#authToggle").textContent = signup ? "Have an account? Sign in" : "New here? Create an account";
   $("#loginPassword").setAttribute("autocomplete", signup ? "new-password" : "current-password");
+  $("#loginDescription").textContent = signup
+    ? "Pick a password of at least 8 characters. We'll email you a confirmation link."
+    : "Use the email and password assigned to this vehicle dashboard.";
 
   // Toggle confirm password field for signup
   const confirmRow = $("#confirmPasswordRow");
@@ -135,32 +153,30 @@ function getPasswordStrength(password) {
 function updatePasswordStrength(password) {
   const strengthEl = $("#passwordStrength");
   const labelEl = $("#strengthLabel");
-  const bars = [$("#bar1"), $("#bar2"), $("#bar3"), $("#bar4")];
+  const barEl = $("#strengthBar");
   const hintEl = $("#passwordHint");
 
   if (!password) {
     strengthEl.hidden = true;
     if (hintEl) hintEl.textContent = "";
+    if (barEl) barEl.style.width = "0%";
     return;
   }
 
   strengthEl.hidden = false;
   const score = getPasswordStrength(password);
 
-  // Update bars
-  bars.forEach((bar, i) => {
-    bar.className = "strength-bar";
-    if (i < score) {
-      if (score <= 2) bar.classList.add("weak");
-      else if (score === 3) bar.classList.add("medium");
-      else bar.classList.add("strong");
-    }
-  });
+  // Update bar width
+  const pct = (score / 4) * 100;
+  if (barEl) barEl.style.width = pct + "%";
 
   // Update label
   const labels = ["Weak", "Fair", "Good", "Strong"];
-  labelEl.textContent = labels[score - 1] || "";
-  labelEl.className = "strength-label" + (score <= 2 ? " weak" : score === 3 ? " medium" : " strong");
+  const colors = ["bg-danger", "bg-warning", "bg-info", "bg-success"];
+  if (labelEl) {
+    labelEl.textContent = labels[score - 1] || "";
+    labelEl.className = "form-hint " + (score <= 2 ? "text-danger" : score === 3 ? "text-warning" : "text-success");
+  }
 
   // Update hint
   const hints = [
@@ -199,41 +215,43 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     if (!validateEmail(val)) {
       hint.textContent = "Please enter a valid email";
-      hint.className = "field-hint error";
+      hint.className = "form-hint text-danger";
     } else {
       hint.textContent = "✓ Valid email";
-      hint.className = "field-hint success";
+      hint.className = "form-hint text-success";
     }
   });
 
   passwordInput.addEventListener("input", () => {
     updatePasswordStrength(passwordInput.value);
-    if (authMode === "signup" && confirmInput.value) {
+    if (authMode === "signup" && confirmInput && confirmInput.value) {
       const err = validateConfirmPassword(passwordInput.value, confirmInput.value);
       const hint = $("#confirmHint");
       if (err) {
         hint.textContent = err;
-        hint.className = "field-hint error";
+        hint.className = "form-hint text-danger";
       } else {
         hint.textContent = "✓ Passwords match";
-        hint.className = "field-hint success";
+        hint.className = "form-hint text-success";
       }
     }
   });
 
-  confirmInput.addEventListener("blur", () => {
-    if (authMode === "signup" && confirmInput.value) {
-      const err = validateConfirmPassword(passwordInput.value, confirmInput.value);
-      const hint = $("#confirmHint");
-      if (err) {
-        hint.textContent = err;
-        hint.className = "field-hint error";
-      } else {
-        hint.textContent = "✓ Passwords match";
-        hint.className = "field-hint success";
+  if (confirmInput) {
+    confirmInput.addEventListener("blur", () => {
+      if (authMode === "signup" && confirmInput.value) {
+        const err = validateConfirmPassword(passwordInput.value, confirmInput.value);
+        const hint = $("#confirmHint");
+        if (err) {
+          hint.textContent = err;
+          hint.className = "form-hint text-danger";
+        } else {
+          hint.textContent = "✓ Passwords match";
+          hint.className = "form-hint text-success";
+        }
       }
-    }
-  });
+    });
+  }
 });
 
 function showClaim(message = "This links the device to your account.") {
@@ -266,6 +284,7 @@ async function checkAuth() {
     return false;
   }
   hideLogin();
+  $("#mainApp").classList.remove("d-none");
   renderAccount();
   return true;
 }
@@ -368,7 +387,9 @@ async function initializeDashboard() {
   await loadProfile();
   await refreshStatus();
   await refreshFiles();
+  initMap();
 }
+
 async function loadProfile() {
   profile = await api("/api/profile");
   $("#loggerAddress").value = profile.address || "";
@@ -381,10 +402,18 @@ async function loadProfile() {
 function renderHome(status) {
   const kind = healthClass(status);
   const gauge = $("#healthGauge");
-  const band = document.querySelector(".health-band");
-  band.classList.toggle("warning", kind === "warning");
-  band.classList.toggle("critical", kind === "critical");
-  gauge.className = `health-gauge ${kind === "ok" ? "" : kind}`;
+
+  // Update gauge colors based on health status
+  gauge.className = "avatar avatar-xl rounded-circle d-flex align-items-center justify-content-center";
+  if (kind === "warning") {
+    gauge.classList.add("bg-warning-subtle", "text-warning");
+  } else if (kind === "critical") {
+    gauge.classList.add("bg-danger-subtle", "text-danger");
+  } else {
+    gauge.classList.add("bg-primary-subtle", "text-primary");
+  }
+  gauge.style.fontSize = "24px";
+  gauge.style.fontWeight = "700";
   gauge.textContent = kind === "critical" ? "!" : kind === "warning" ? "!" : "OK";
 
   $("#healthText").textContent = status.health;
@@ -404,30 +433,22 @@ function renderHome(status) {
   const connection = $("#connectionPill");
   const cloudMode = status.source === "cloud";
   connection.textContent = status.connected ? `Connected to ${status.loggerAddress}` : cloudMode ? "Waiting for cloud upload" : `Offline: ${status.connectionError || "logger unavailable"}`;
-  connection.classList.toggle("online", status.connected);
-  connection.classList.toggle("offline", !status.connected);
-  $("#setupBanner strong").textContent = cloudMode ? "Waiting for ESP32 upload" : "Connect your logger";
-  $("#setupBanner span").textContent = cloudMode ? "Deploy the dashboard online, then configure the ESP32 to POST summaries to /api/cloud/status." : "Enter `canlogger.local` or the ESP32 IP address in Settings, then click Test connection.";
-  $("#setupBanner").classList.toggle("visible", !status.connected);
+  connection.className = "badge " + (status.connected ? "bg-success" : "bg-warning");
+  $("#setupBanner").hidden = !status.connected;
 }
 
 function renderAlerts(alerts) {
   const markup = alerts.map((alert) => `
-    <article class="alert-card ${escapeHtml(alert.severity)}">
-      <div class="alert-title">
-        <span>${escapeHtml(alert.title)}</span>
-        <span class="badge">${escapeHtml(alert.status)}</span>
-      </div>
-      <div>${escapeHtml(new Date(alert.time).toLocaleString())}</div>
-      <div class="service-details">
-        CAN ID: ${escapeHtml(alert.service.canId || "n/a")}<br>
-        Fault code: ${escapeHtml(alert.service.faultCode || "n/a")}<br>
-        Raw reason: ${escapeHtml(alert.service.rawReason || "n/a")}
-      </div>
-    </article>
+    <div class="alert alert-${escapeHtml(alert.severity) === 'warning' ? 'warning' : escapeHtml(alert.severity) === 'critical' ? 'danger' : 'info'} alert-dismissible fade show" role="alert">
+      <strong>${escapeHtml(alert.title)}</strong>
+      <span class="badge bg-${escapeHtml(alert.severity) === 'warning' ? 'warning' : escapeHtml(alert.severity) === 'critical' ? 'danger' : 'info'} ms-2">${escapeHtml(alert.status)}</span>
+      <div class="small text-muted">${escapeHtml(new Date(alert.time).toLocaleString())}</div>
+      ${profile.serviceMode ? `<div class="service-details small text-muted mt-2">CAN ID: ${escapeHtml(alert.service?.canId || "n/a")}<br>Fault code: ${escapeHtml(alert.service?.faultCode || "n/a")}<br>Reason: ${escapeHtml(alert.service?.rawReason || "n/a")}</div>` : ''}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="close"></button>
+    </div>
   `).join("");
-  $("#alertsList").innerHTML = markup || "<p>No alerts recorded.</p>";
-  $("#homeAlerts").innerHTML = markup || "<p>No active alerts.</p>";
+  $("#alertsList").innerHTML = markup || "<p class='text-muted'>No alerts recorded.</p>";
+  $("#homeAlerts").innerHTML = markup || "<p class='text-muted'>No active alerts.</p>";
 }
 
 function isRawLog(file) {
@@ -437,17 +458,17 @@ function isRawLog(file) {
 function renderFiles(files) {
   const visibleFiles = profile.serviceMode ? files : files.filter((file) => !isRawLog(file));
   $("#fileList").innerHTML = visibleFiles.map((file) => `
-    <div class="file-row">
+    <div class="list-group-item d-flex justify-content-between align-items-center">
       <div>
         <strong>${escapeHtml(file.name)}</strong>
-        <small>${formatNumber(file.size)} bytes${file.active ? " - active session" : ""}</small>
+        <div class="small text-muted">${formatNumber(file.size)} bytes${file.active ? " - active session" : ""}</div>
       </div>
-      <div class="file-actions">
-        <a class="secondary-button" href="/api/download?name=${encodeURIComponent(file.name)}">Download</a>
-        <button class="text-button" data-preview="${encodeURIComponent(file.name)}">Preview</button>
+      <div class="btn-group">
+        <a class="btn btn-sm btn-outline-primary" href="/api/download?name=${encodeURIComponent(file.name)}">Download</a>
+        <button class="btn btn-sm btn-outline-secondary" data-preview="${encodeURIComponent(file.name)}">Preview</button>
       </div>
     </div>
-  `).join("") || "<p>No report files available yet.</p>";
+  `).join("") || "<p class='text-muted'>No report files available yet.</p>";
 }
 
 async function refreshStatus() {
@@ -465,8 +486,6 @@ async function refreshFiles() {
 async function saveProfile(event) {
   event.preventDefault();
   if (authSession?.mode === "cloud") {
-    // Cloud profile is managed by the dashboard host (environment config); the
-    // server rejects POST /api/profile with 403 in this mode.
     applyServiceMode();
     $("#testResult").textContent = "Settings are managed by the dashboard host in cloud mode.";
     return;
@@ -494,7 +513,186 @@ async function testConnection() {
   $("#testResult").textContent = result.ok ? "Connection successful. Live vehicle status is available." : `Connection failed: ${result.error}`;
 }
 
-document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => setPage(button.dataset.page)));
+// ==================== GPS Tracking ====================
+function initMap() {
+  // Initialize Leaflet map
+  map = L.map('map').setView([0, 0], 2);
+
+  // Add OpenStreetMap tiles (free, no API key needed)
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(map);
+
+  // Hide map until we have GPS data
+  document.getElementById('map').style.display = 'none';
+}
+
+function updateMap(lat, lng, timestamp) {
+  if (!map) return;
+
+  document.getElementById('map').style.display = 'block';
+
+  // Update center view
+  map.setView([lat, lng], 13);
+
+  // Add or update marker
+  if (gpsMarker) {
+    gpsMarker.setLatLng([lat, lng]);
+  } else {
+    gpsMarker = L.marker([lat, lng]).addTo(map)
+      .bindPopup(`Vehicle Location<br>${new Date(timestamp).toLocaleString()}`)
+      .openPopup();
+  }
+
+  // Add to route
+  gpsRoute.push([lat, lng]);
+  if (gpsRoute.length > 1) {
+    L.polyline(gpsRoute, { color: 'blue', weight: 3 }).addTo(map);
+  }
+
+  // Update status
+  $("#gpsStatus").textContent = "Connected";
+  $("#gpsStatus").className = "text-success";
+  $("#lastLocation").textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+}
+
+function updateLocationFromStatus(status) {
+  // Check if status contains GPS data
+  if (status.gpsLatitude && status.gpsLongitude) {
+    updateMap(status.gpsLatitude, status.gpsLongitude, status.updatedAt);
+  } else {
+    // Try to get from metrics
+    if (status.metrics?.latitude && status.metrics?.longitude) {
+      updateMap(status.metrics.latitude, status.metrics.longitude, status.updatedAt);
+    }
+  }
+}
+
+async function refreshLocation() {
+  try {
+    const status = await api("/api/dashboard-status");
+    updateLocationFromStatus(status);
+  } catch (error) {
+    console.error("Failed to refresh location:", error);
+  }
+}
+
+// ==================== AI Assistant ====================
+function addAiMessage(role, content) {
+  const chat = $("#aiChat");
+  const div = document.createElement("div");
+  div.className = "mb-3";
+
+  const badge = document.createElement("span");
+  badge.className = `badge ${role === 'user' ? 'bg-primary' : 'bg-success'} mb-2`;
+  badge.textContent = role === 'user' ? 'You' : 'AI';
+
+  const p = document.createElement("p");
+  p.className = "mb-0";
+  p.textContent = content;
+
+  div.appendChild(badge);
+  div.appendChild(p);
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+async function sendAiQuery(query) {
+  if (!query.trim()) return;
+
+  addAiMessage("user", query);
+
+  // Local AI analysis (always available)
+  const localResponse = performLocalAnalysis(query);
+
+  // If cloud AI is enabled, also call the API
+  if (aiCloudEnabled) {
+    try {
+      const cloudResponse = await api("/api/ai/query", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query, history: aiHistory })
+      });
+      addAiMessage("ai", cloudResponse.answer);
+      aiHistory.push({ role: "user", content: query });
+      aiHistory.push({ role: "assistant", content: cloudResponse.answer });
+    } catch (error) {
+      addAiMessage("ai", localResponse);
+    }
+  } else {
+    // Use local analysis
+    setTimeout(() => addAiMessage("ai", localResponse), 500);
+  }
+}
+
+function performLocalAnalysis(query) {
+  const q = query.toLowerCase();
+
+  // Fault diagnosis
+  if (q.includes("fault") || q.includes("code") || q.includes("diagnos")) {
+    if (dashboardStatus?.metrics?.faultCode) {
+      return `Current fault code: ${dashboardStatus.metrics.faultCode}. This typically indicates a ${getFaultExplanation(dashboardStatus.metrics.faultCode)}. Recommended action: Check the corresponding sensor and inspect wiring connections.`;
+    }
+    return "No active fault codes detected. All systems appear to be operating normally.";
+  }
+
+  // Predictive maintenance
+  if (q.includes("mainten") || q.includes("predict") || q.includes("when")) {
+    if (dashboardStatus?.metrics?.events > 100) {
+      return `Based on ${dashboardStatus.metrics.events} recorded events, I recommend scheduling maintenance within the next 500km. Key indicators: high event count suggests increased wear on braking system.`;
+    }
+    return "Vehicle health is good. Next scheduled maintenance can be delayed based on current usage patterns.";
+  }
+
+  // Anomaly detection
+  if (q.includes("anomal") || q.includes("unusual") || q.includes("weird")) {
+    if (dashboardStatus?.metrics?.accelerationMps2 > 0.5) {
+      return "Detected unusual acceleration patterns. This could indicate aggressive driving or road conditions. Consider reviewing driving habits.";
+    }
+    return "No significant anomalies detected in recent driving patterns.";
+  }
+
+  // General health
+  if (q.includes("health") || q.includes("how is") || q.includes("status")) {
+    const health = dashboardStatus?.health || "Unknown";
+    return `Current vehicle health status: ${health}. ${getHealthRecommendation(health)}`;
+  }
+
+  // Default response
+  return "I can help you understand your vehicle's health data. Try asking about faults, maintenance, or anomalies.";
+}
+
+function getFaultExplanation(code) {
+  const explanations = {
+    "F01": "brake system pressure issue",
+    "F02": "engine temperature warning",
+    "F03": "battery voltage low",
+    "F04": "oil pressure warning",
+    "F05": " ABS system fault"
+  };
+  return explanations[code] || "a sensor or system fault";
+}
+
+function getHealthRecommendation(health) {
+  const recs = {
+    "Healthy": "Continue regular maintenance schedule.",
+    "Warning": "Schedule a diagnostic check soon.",
+    "Critical": "Immediate attention required. Pull over safely and contact service."
+  };
+  return recs[health] || "Monitor closely.";
+}
+
+// Theme toggle
+function toggleTheme() {
+  const html = document.documentElement;
+  const current = html.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+}
+
+// ==================== Event Listeners ====================
+document.querySelectorAll(".nav-link").forEach((button) => button.addEventListener("click", () => setPage(button.dataset.page)));
 document.querySelectorAll("[data-page-jump]").forEach((button) => button.addEventListener("click", () => setPage(button.dataset.pageJump)));
 $("#connectShortcut").addEventListener("click", () => setPage("settings"));
 $("#refreshButton").addEventListener("click", () => {
@@ -528,6 +726,35 @@ $("#claimForm").addEventListener("submit", handleClaim);
 $("#claimLogout").addEventListener("click", handleLogout);
 $("#logoutButton").addEventListener("click", handleLogout);
 
+// Location page
+$("#refreshLocation").addEventListener("click", refreshLocation);
+
+// AI Assistant
+$("#aiSend").addEventListener("click", () => {
+  const input = $("#aiInput");
+  sendAiQuery(input.value);
+  input.value = "";
+});
+$("#aiInput").addEventListener("keypress", (e) => {
+  if (e.key === "Enter") {
+    sendAiQuery(e.target.value);
+    e.target.value = "";
+  }
+});
+$("#aiCloudEnabled").addEventListener("change", (e) => {
+  aiCloudEnabled = e.target.checked;
+});
+
+// Theme toggle
+$("#themeToggle").addEventListener("click", toggleTheme);
+
+// Restore theme preference
+const savedTheme = localStorage.getItem('theme');
+if (savedTheme) {
+  document.documentElement.setAttribute('data-theme', savedTheme);
+}
+
+// Initialize
 if (await checkAuth()) {
   await initializeDashboard();
 }
@@ -535,5 +762,9 @@ if (await checkAuth()) {
 setInterval(() => {
   if (authSession?.authenticated) {
     refreshStatus();
+    // Update location if on location page
+    if (!$("#locationPage").hidden) {
+      refreshLocation();
+    }
   }
 }, 3000);

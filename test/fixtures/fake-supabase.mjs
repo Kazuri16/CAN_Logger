@@ -25,6 +25,9 @@ function tableRead(table) {
         ? { data: [], error: null }
         : { data: [{ device_id: "dev-uuid-1" }], error: null };
     case "device_status_latest":
+      if (process.env.FAKE_STATUS === "empty") {
+        return { data: [], error: null };
+      }
       return {
         data: [{
           device_id: "dev-uuid-1",
@@ -74,7 +77,7 @@ function tableRead(table) {
     case "devices":
       return process.env.FAKE_DEVICES === "notfound"
         ? { data: [], error: null }
-        : { data: [{ id: "dev-uuid-1" }], error: null };
+        : { data: [{ id: "dev-uuid-1", claim_code: "claim-code-test" }], error: null };
     default:
       return { data: [], error: null };
   }
@@ -133,6 +136,14 @@ export function makeFakeFactory() {
             },
             error: null
           };
+        },
+        async signUp({ email, password, options }) {
+          record({ kind: "auth", method: "signUp", role, email, emailRedirectTo: options?.emailRedirectTo });
+          if (process.env.FAKE_SIGNUP === "error") {
+            return { data: null, error: { message: "signup disabled" } };
+          }
+          // Email-confirmation-on: a user row, no session.
+          return { data: { user: { id: "new-user-uuid", email }, session: null }, error: null };
         },
         async signOut() {
           record({ kind: "auth", method: "signOut", role });

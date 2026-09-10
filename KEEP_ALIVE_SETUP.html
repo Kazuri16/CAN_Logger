@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Keep-Alive Setup</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f8fafc;
+            color: #1e293b;
+            line-height: 1.6;
+        }
+        @media (prefers-color-scheme: dark) {
+            body { background: #0f172a; color: #e2e8f0; }
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 32px 20px;
+        }
+        h1 {
+            font-size: 28px;
+            margin-bottom: 8px;
+            color: #0f172a;
+        }
+        @media (prefers-color-scheme: dark) {
+            h1 { color: #f1f5f9; }
+        }
+        .subtitle {
+            color: #64748b;
+            font-size: 15px;
+            margin-bottom: 32px;
+        }
+        .card {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        @media (prefers-color-scheme: dark) {
+            .card { background: #1e293b; border-color: #334155; }
+        }
+        .card h2 {
+            font-size: 18px;
+            margin-bottom: 12px;
+            color: #0f172a;
+        }
+        @media (prefers-color-scheme: dark) {
+            .card h2 { color: #f1f5f9; }
+        }
+        .card p {
+            margin-bottom: 12px;
+            color: #475569;
+        }
+        @media (prefers-color-scheme: dark) {
+            .card p { color: #cbd5e1; }
+        }
+        .code-block {
+            background: #f1f5f9;
+            border-left: 3px solid #3b82f6;
+            padding: 12px 16px;
+            border-radius: 6px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+            margin: 12px 0;
+            color: #1e293b;
+        }
+        @media (prefers-color-scheme: dark) {
+            .code-block { background: #0f172a; color: #e2e8f0; }
+        }
+        .url {
+            background: #dbeafe;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 13px;
+            word-break: break-all;
+            color: #1e40af;
+            margin: 12px 0;
+        }
+        @media (prefers-color-scheme: dark) {
+            .url { background: #1e3a8a; color: #93c5fd; }
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-right: 8px;
+            margin-bottom: 8px;
+        }
+        .badge.free { background: #d1fae5; color: #065f46; }
+        @media (prefers-color-scheme: dark) {
+            .badge.free { background: #064e3b; color: #86efac; }
+        }
+        .badge.paid { background: #fce7f3; color: #831843; }
+        @media (prefers-color-scheme: dark) {
+            .badge.paid { background: #500724; color: #fbcfe8; }
+        }
+        .steps {
+            counter-reset: step;
+            list-style: none;
+        }
+        .steps li {
+            counter-increment: step;
+            margin-bottom: 16px;
+            padding-left: 32px;
+            position: relative;
+        }
+        .steps li:before {
+            content: counter(step);
+            position: absolute;
+            left: 0;
+            top: 0;
+            background: #3b82f6;
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        @media (prefers-color-scheme: dark) {
+            .steps li:before { background: #1e40af; }
+        }
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 16px;
+            margin: 20px 0;
+        }
+        @media (max-width: 768px) {
+            .comparison { grid-template-columns: 1fr; }
+        }
+        .comparison-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 16px;
+            background: white;
+        }
+        @media (prefers-color-scheme: dark) {
+            .comparison-card { background: #0f172a; border-color: #334155; }
+        }
+        .comparison-card h3 {
+            font-size: 14px;
+            margin-bottom: 12px;
+            color: #0f172a;
+        }
+        @media (prefers-color-scheme: dark) {
+            .comparison-card h3 { color: #f1f5f9; }
+        }
+        .comparison-card ul {
+            font-size: 13px;
+            list-style: none;
+            color: #64748b;
+        }
+        @media (prefers-color-scheme: dark) {
+            .comparison-card ul { color: #cbd5e1; }
+        }
+        .comparison-card li {
+            padding: 6px 0;
+        }
+        .comparison-card li:before {
+            content: "✓ ";
+            color: #10b981;
+            font-weight: 600;
+            margin-right: 4px;
+        }
+        .comparison-card li.con:before {
+            content: "✗ ";
+            color: #ef4444;
+        }
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #3b82f6;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 13px;
+            margin-top: 12px;
+            border: none;
+            cursor: pointer;
+        }
+        .button:hover {
+            background: #2563eb;
+        }
+        .note {
+            background: #fef3c7;
+            border-left: 3px solid #f59e0b;
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin: 16px 0;
+            font-size: 13px;
+        }
+        @media (prefers-color-scheme: dark) {
+            .note { background: #78350f; border-left-color: #d97706; color: #fef3c7; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Dashboard Keep-Alive Setup</h1>
+        <p class="subtitle">Keep your Vercel deployment always-on with one of these options</p>
+
+        <div class="card">
+            <h2>The Problem</h2>
+            <p>Your Vercel dashboard is deployed at:</p>
+            <div class="url">https://can-logger-dnmjx9hbq-abhishek-e.vercel.app</div>
+            <p>Vercel's <strong>free tier spins down serverless functions after ~15 minutes of inactivity</strong>. This means:</p>
+            <ul style="margin-left: 20px; margin-top: 8px; color: #475569;">
+                <li>First visit: 2-5 second cold start</li>
+                <li>Idle 15 min: function goes to sleep</li>
+                <li>Next visit: cold start again</li>
+            </ul>
+            <p style="margin-top: 12px;">To fix this, pick one of the three options below.</p>
+        </div>
+
+        <h2 style="font-size: 20px; margin: 32px 0 16px; color: #0f172a;">Options</h2>
+
+        <div class="comparison">
+            <div class="comparison-card">
+                <h3>Option 1: Free Cron Ping</h3>
+                <span class="badge free">FREE</span>
+                <ul>
+                    <li>2 min setup</li>
+                    <li>5 min ping interval</li>
+                    <li>cron-job.org</li>
+                    <li class="con">Depends on cron service</li>
+                </ul>
+            </div>
+            <div class="comparison-card">
+                <h3>Option 2: Vercel Pro</h3>
+                <span class="badge paid">$20/mo</span>
+                <ul>
+                    <li>Guaranteed always-on</li>
+                    <li>Zero cold starts</li>
+                    <li>Production-ready</li>
+                    <li class="con">Paid plan</li>
+                </ul>
+            </div>
+            <div class="comparison-card">
+                <h3>Option 3: DIY Health Check</h3>
+                <span class="badge free">FREE</span>
+                <ul>
+                    <li>Custom endpoint</li>
+                    <li>Total control</li>
+                    <li>Lightweight</li>
+                    <li class="con">Needs code changes</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2><span class="badge free">RECOMMENDED</span> Option 1: Free Cron Ping</h2>
+            <p>Use a free cron service to ping your dashboard every 5 minutes. It wakes up instantly on each ping.</p>
+            <ol class="steps">
+                <li><strong>Go to <a href="https://cron-job.org" target="_blank">cron-job.org</a></strong></li>
+                <li><strong>Sign up</strong> (free tier allows 1 cron job)</li>
+                <li><strong>Click "Create Cronjob"</strong></li>
+                <li><strong>Fill in these fields:</strong>
+                    <div class="code-block">
+Title: Dashboard Uptime
+URL to call: https://can-logger-dnmjx9hbq-abhishek-e.vercel.app
+Schedule: Every 5 minutes
+Timezone: Your timezone
+                    </div>
+                </li>
+                <li><strong>Save</strong> — Done! Dashboard now pings itself every 5 min, stays warm 24/7.</li>
+            </ol>
+            <div class="note">
+                <strong>Pro tip:</strong> Use the exact URL above or just <code>can-logger-dnmjx9hbq-abhishek-e.vercel.app</code>. The cron service does a simple GET request.
+            </div>
+            <p style="margin-top: 16px;"><strong>Alternative free cron services:</strong></p>
+            <ul style="margin-left: 20px; margin-top: 8px;">
+                <li><a href="https://uptimerobot.com" target="_blank">UptimeRobot</a> (50 monitors, 5-min checks)</li>
+                <li><a href="https://www.statuscake.com" target="_blank">Statuscake</a> (free tier)</li>
+                <li><a href="https://www.pingdom.com" target="_blank">Pingdom</a> (limited free)</li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h2>Option 2: Vercel Pro (~$20/mo)</h2>
+            <p>Upgrade your Vercel team to Pro for guaranteed always-on functions with zero cold starts.</p>
+            <ol class="steps">
+                <li><strong>Upgrade:</strong>
+                    <div class="code-block">vercel upgrade</div>
+                </li>
+                <li><strong>Select Pro plan</strong> during checkout</li>
+                <li><strong>Deploy:</strong>
+                    <div class="code-block">vercel deploy --prod</div>
+                </li>
+            </ol>
+            <p style="margin-top: 16px;"><strong>Benefits:</strong></p>
+            <ul style="margin-left: 20px;">
+                <li>Functions stay warm 24/7</li>
+                <li>Instant response times</li>
+                <li>Production-grade reliability</li>
+                <li>Higher request limits</li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h2>Option 3: DIY Health Check Endpoint</h2>
+            <p>Add a lightweight health-check endpoint and ping it with cron-job.org (combines Options 1 & 3).</p>
+            <ol class="steps">
+                <li><strong>Edit <code>api/index.js</code></strong> and add this at the top of the request handler:
+                    <div class="code-block">if (req.url === '/health' && req.method === 'GET') {
+  res.writeHead(200, {'Content-Type': 'application/json'});
+  res.end(JSON.stringify({status: 'ok', uptime: process.uptime()}));
+  return;
+}</div>
+                </li>
+                <li><strong>Deploy:</strong>
+                    <div class="code-block">vercel deploy --prod</div>
+                </li>
+                <li><strong>Set up cron on cron-job.org</strong> to ping:
+                    <div class="code-block">https://can-logger-dnmjx9hbq-abhishek-e.vercel.app/health</div>
+                </li>
+            </ol>
+            <p style="margin-top: 16px;"><strong>Why this works:</strong> A dedicated health endpoint returns instantly without loading the full dashboard, so each ping is lightweight.</p>
+        </div>
+
+        <div class="card">
+            <h2>My Recommendation</h2>
+            <p><strong>Start with Option 1 (Free Cron)</strong> because:</p>
+            <ul style="margin-left: 20px; margin-top: 8px;">
+                <li>✓ Free forever</li>
+                <li>✓ 2-minute setup</li>
+                <li>✓ 5-minute wake interval (instant load)</li>
+                <li>✓ Zero code changes needed</li>
+            </ul>
+            <p style="margin-top: 16px;"><strong>Upgrade to Option 2 (Vercel Pro) if:</strong></p>
+            <ul style="margin-left: 20px;">
+                <li>You want guaranteed always-on with no dependencies</li>
+                <li>You're moving to production and need SLA guarantees</li>
+                <li>You have budget for $20/month</li>
+            </ul>
+            <a href="https://cron-job.org" target="_blank" class="button">Go to cron-job.org →</a>
+        </div>
+
+        <div class="card">
+            <h2>What to Do Next</h2>
+            <ol style="margin-left: 20px;">
+                <li>Pick Option 1, 2, or 3 above</li>
+                <li>Follow the setup steps</li>
+                <li>Test: Visit the dashboard URL — it should load instantly (no cold start delay)</li>
+                <li>Wait 20 minutes idle, then visit again — should still load fast (proof the ping is working)</li>
+            </ol>
+        </div>
+    </div>
+</body>
+</html>

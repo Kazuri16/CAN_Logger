@@ -45,6 +45,25 @@ const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_LOCK_MS = 15 * 60 * 1000;
 
+// Fixed-window counters shared by the signup and device-claim throttles. Same
+// best-effort caveat as loginAttempts: per-process, so not a global limit on
+// serverless. Keyed by a caller-scoped string ("signup:ip:1.2.3.4",
+// "claim:user:<uuid>"). rateLimited() bumps the count and reports whether this
+// hit is over the limit.
+const rateBuckets = new Map(); // key -> { count, firstAt }
+const RATE_MAX_WINDOW_MS = 60 * 60 * 1000; // longest window any caller uses; drives the sweep
+function rateLimited(key, max, windowMs) {
+  const now = Date.now();
+  const rec = rateBuckets.get(key) || { count: 0, firstAt: now };
+  if (now - rec.firstAt > windowMs) {
+    rec.count = 0;
+    rec.firstAt = now;
+  }
+  rec.count += 1;
+  rateBuckets.set(key, rec);
+  return rec.count > max;
+}
+
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -138,6 +157,11 @@ function sweepExpired() {
     const keepUntil = Math.max(rec.lockedUntil || 0, (rec.firstAt || 0) + LOGIN_WINDOW_MS);
     if (keepUntil <= now) {
       loginAttempts.delete(ip);
+    }
+  }
+  for (const [key, rec] of rateBuckets) {
+    if ((rec.firstAt || 0) + RATE_MAX_WINDOW_MS <= now) {
+      rateBuckets.delete(key);
     }
   }
 }
@@ -785,6 +809,69 @@ async function filesForUser(session, limit = 200) {
   return (data || []).map(rowToFile);
 }
 
+// The devices this user has already claimed. Same pattern as the other per-user
+// reads: user's own client (RLS) + explicit user_id filter. Only the fields the
+// SPA needs to decide "show the claim screen or the dashboard".
+async function devicesForUser(session) {
+  const client = userClient(session.access_token);
+  const { data, error } = await client
+    .from("user_devices")
+    .select("device_id, access_level")
+    .eq("user_id", session.userId);
+  if (error) {
+    throw new Error(error.message || "user_devices read failed");
+  }
+  return (data || []).map((r) => ({ id: r.device_id, accessLevel: r.access_level || "viewer" }));
+}
+
+// Server-mediated device claim. Runs entirely on the service-role client:
+// user_devices has no INSERT policy, so the user's own client could not write
+// the link. Match devices by device_id + claim_code, require the device to have
+// actually reported (a device_status_latest row), then upsert the viewer link
+// (idempotent - re-claiming is a no-op, not an error).
+async function claimDevice(session, deviceId, claimCode) {
+  if (!authConfigured || !supabaseServiceKey) {
+    return { status: 503, body: { ok: false, error: "Device claiming is not configured on the server." } };
+  }
+  const svc = serviceClient();
+
+  const devLookup = await svc
+    .from("devices")
+    .select("id, claim_code")
+    .eq("device_id", deviceId)
+    .limit(1);
+  if (devLookup.error) {
+    return { status: 502, body: { ok: false, error: devLookup.error.message } };
+  }
+  const device = devLookup.data && devLookup.data[0];
+  // Compare the code even when the device is missing so a wrong id and a wrong
+  // code look the same to the caller (no device-id enumeration oracle).
+  const codeOk = Boolean(device && device.claim_code && tokenEquals(device.claim_code, claimCode));
+  if (!device || !codeOk) {
+    return { status: 404, body: { ok: false, error: "No device matches that ID and claim code." } };
+  }
+
+  const seen = await svc
+    .from("device_status_latest")
+    .select("device_id")
+    .eq("device_id", device.id)
+    .limit(1);
+  if (seen.error) {
+    return { status: 502, body: { ok: false, error: seen.error.message } };
+  }
+  if (!seen.data || !seen.data[0]) {
+    return { status: 409, body: { ok: false, error: "This device has not reported to the cloud yet. Power it on, wait for its first upload, then try again." } };
+  }
+
+  const link = await svc
+    .from("user_devices")
+    .upsert({ user_id: session.userId, device_id: device.id, access_level: "viewer" }, { onConflict: "user_id,device_id" });
+  if (link.error) {
+    return { status: 502, body: { ok: false, error: link.error.message } };
+  }
+  return { status: 200, body: { ok: true, deviceId } };
+}
+
 // ESP32 upload -> resolve the device row by sha256(DEVICE_UPLOAD_TOKEN), then
 // write device_status_latest + device_events with the service-role client.
 async function ingestDeviceStatus(payload) {
@@ -841,7 +928,7 @@ async function ingestDeviceStatus(payload) {
 
 async function handleApi(req, res, url) {
   // S6: block cross-origin state-changing POSTs before any handler runs.
-  const stateChangingPaths = ["/api/auth/login", "/api/auth/logout", "/api/profile"];
+  const stateChangingPaths = ["/api/auth/login", "/api/auth/signup", "/api/auth/logout", "/api/profile", "/api/devices/claim"];
   if (req.method === "POST" && stateChangingPaths.includes(url.pathname) && !sameOriginRequest(req)) {
     return json(res, 403, { error: "Cross-origin request blocked." });
   }
@@ -877,6 +964,42 @@ async function handleApi(req, res, url) {
     const sess = sessionFromSupabase(data.session);
     setSessionCookie(req, res, encryptSession(sess));
     return json(res, 200, { ok: true, ...authStatusFor(sess) });
+  }
+
+  if (url.pathname === "/api/auth/signup" && req.method === "POST") {
+    if (!authRequired) {
+      return json(res, 200, authStatusFor(null));
+    }
+    if (!authConfigured) {
+      return json(res, 503, {
+        ok: false,
+        error: "Dashboard login is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY."
+      });
+    }
+    if (rateLimited(`signup:ip:${clientIp(req)}`, 5, 60 * 60 * 1000)) {
+      return json(res, 429, { ok: false, error: "Too many sign-up attempts. Try again later." });
+    }
+    let body;
+    try {
+      body = JSON.parse(await readBody(req) || "{}");
+    } catch {
+      return json(res, 400, { ok: false, error: "Invalid sign-up data." });
+    }
+    const email = String(body.email || "").trim();
+    const password = String(body.password || "");
+    if (!email || password.length < 8) {
+      return json(res, 400, { ok: false, error: "Enter an email and a password of at least 8 characters." });
+    }
+    // Supabase sends the confirmation email (custom SMTP) and returns no session
+    // when email confirmation is on. The link lands back on the dashboard root;
+    // the user then signs in through /api/auth/login.
+    const emailRedirectTo = `http${isSecureRequest(req) ? "s" : ""}://${req.headers.host}/`;
+    const { data, error } = await authClient().auth.signUp({ email, password, options: { emailRedirectTo } });
+    if (error) {
+      // Generic message: don't confirm or deny that the email already exists.
+      return json(res, 400, { ok: false, error: "Could not create the account. Check the email, or sign in if you already have one." });
+    }
+    return json(res, 200, { ok: true, emailConfirmationRequired: !data?.session });
   }
 
   if (url.pathname === "/api/auth/logout" && req.method === "POST") {
@@ -923,6 +1046,42 @@ async function handleApi(req, res, url) {
 
   if (!requireBrowserAuth(req, res, session)) {
     return;
+  }
+
+  if (url.pathname === "/api/devices" && req.method === "GET") {
+    try {
+      const devices = await devicesForUser(session);
+      return json(res, 200, { devices, count: devices.length });
+    } catch {
+      return json(res, 200, { devices: [], count: 0 });
+    }
+  }
+
+  if (url.pathname === "/api/devices/claim" && req.method === "POST") {
+    if (!authRequired) {
+      return json(res, 403, { ok: false, error: "Device claiming is unavailable when dashboard auth is off." });
+    }
+    if (!session) {
+      return json(res, 401, { ok: false, error: "Login required." });
+    }
+    const ip = clientIp(req);
+    const hourMs = 60 * 60 * 1000;
+    if (rateLimited(`claim:ip:${ip}`, 10, hourMs) || rateLimited(`claim:user:${session.userId}`, 10, hourMs)) {
+      return json(res, 429, { ok: false, error: "Too many claim attempts. Try again later." });
+    }
+    let body;
+    try {
+      body = JSON.parse(await readBody(req) || "{}");
+    } catch {
+      return json(res, 400, { ok: false, error: "Invalid claim data." });
+    }
+    const deviceId = String(body.deviceId || "").trim();
+    const claimCode = String(body.claimCode || "").trim();
+    if (!deviceId || !claimCode) {
+      return json(res, 400, { ok: false, error: "Enter the device ID and the claim code." });
+    }
+    const result = await claimDevice(session, deviceId, claimCode);
+    return json(res, result.status, result.body);
   }
 
   if (url.pathname === "/api/cloud/status" && req.method === "GET") {

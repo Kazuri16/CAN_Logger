@@ -16,14 +16,14 @@ test.describe("Signup UX Enhancements", () => {
   test("clicking signup toggle switches to signup mode", async ({ page }) => {
     const toggle = page.locator("#authToggle");
     await toggle.click();
+    await page.waitForTimeout(300); // wait for JS to update DOM
 
     // Verify mode changed
-    await expect(page.locator("#loginForm h1")).toHaveText("Create account");
+    await expect(page.locator("#loginTitle")).toHaveText("Create account");
     await expect(page.locator("#authSubmit")).toHaveText("Create account");
     await expect(toggle).toHaveText("Have an account? Sign in");
 
     // Confirm password field should appear
-    await expect(page.locator("#confirmPasswordRow")).not.toBeHidden();
     await expect(page.locator("#confirmPassword")).toBeVisible();
   });
 
@@ -58,7 +58,7 @@ test.describe("Signup UX Enhancements", () => {
 
     // Should show error
     await expect(hint).not.toBeEmpty();
-    await expect(hint).toHaveClass(/error/);
+    await expect(hint).toHaveClass(/text-danger/);
 
     // Type valid email
     await emailInput.fill("user@example.com");
@@ -66,12 +66,13 @@ test.describe("Signup UX Enhancements", () => {
 
     // Should show success
     await expect(hint).toHaveText(/Valid email/);
-    await expect(hint).toHaveClass(/success/);
+    await expect(hint).toHaveClass(/text-success/);
   });
 
   test("confirm password validation on blur", async ({ page }) => {
     // Switch to signup mode
     await page.locator("#authToggle").click();
+    await page.waitForTimeout(300);
 
     const passwordInput = page.locator("#loginPassword");
     const confirmInput = page.locator("#confirmPassword");
@@ -84,7 +85,7 @@ test.describe("Signup UX Enhancements", () => {
 
     // Should show error
     await expect(hint).toHaveText(/match/i);
-    await expect(hint).toHaveClass(/error/);
+    await expect(hint).toHaveClass(/text-danger/);
 
     // Fill matching password
     await confirmInput.fill("Testpass123");
@@ -92,18 +93,20 @@ test.describe("Signup UX Enhancements", () => {
 
     // Should show success
     await expect(hint).toHaveText(/match/i);
-    await expect(hint).toHaveClass(/success/);
+    await expect(hint).toHaveClass(/text-success/);
   });
 
   test("toggling back to login hides confirm password", async ({ page }) => {
     // Switch to signup
     await page.locator("#authToggle").click();
-    await expect(page.locator("#confirmPasswordRow")).not.toBeHidden();
+    await page.waitForTimeout(500); // wait for JS to update DOM
+    await expect(page.locator("#confirmPassword")).toBeVisible();
 
     // Switch back to login
     await page.locator("#authToggle").click();
-    await expect(page.locator("#confirmPasswordRow")).toBeHidden();
-    await expect(page.locator("#loginForm h1")).toHaveText("Sign in");
+    await page.waitForTimeout(300);
+    await expect(page.locator("#confirmPassword")).toBeHidden();
+    await expect(page.locator("#loginTitle")).toHaveText("Sign in");
     await expect(page.locator("#authSubmit")).toHaveText("Sign in");
   });
 });

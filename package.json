@@ -9,12 +9,16 @@
     "start": "node server.js",
     "start:cloud": "node server.js",
     "check": "node --check server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "test:e2e": "playwright test"
   },
   "engines": {
     "node": ">=22"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.115.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
   }
 }
