@@ -49,6 +49,83 @@
 .login-copy {
   color: var(--muted);
   margin-bottom: 0;
+  font-size: 14px;
+}
+
+.field-hint {
+  display: block;
+  font-size: 12px;
+  margin-top: 4px;
+  color: var(--muted);
+  min-height: 16px;
+}
+
+.field-hint.error {
+  color: var(--red);
+}
+
+.field-hint.success {
+  color: var(--green);
+}
+
+.password-strength {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.strength-bars {
+  display: flex;
+  gap: 4px;
+}
+
+.strength-bar {
+  width: 24px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.strength-bar.weak {
+  background: var(--red);
+}
+
+.strength-bar.medium {
+  background: var(--amber);
+}
+
+.strength-bar.strong {
+  background: var(--green);
+}
+
+.strength-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.strength-label.weak {
+  color: var(--red);
+}
+
+.strength-label.medium {
+  color: var(--amber);
+}
+
+.strength-label.strong {
+  color: var(--green);
+}
+
+.confirm-password-row {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+}
+
+.confirm-password-row:not([hidden]) {
+  max-height: 100px;
+  opacity: 1;
 }
 
 .account-pill {

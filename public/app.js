@@ -22,6 +22,7 @@ let profile = {
 };
 let dashboardStatus = null;
 let authSession = null;
+let authMode = "login"; // "login" | "signup"
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -86,6 +87,168 @@ function hideLogin() {
   $("#loginScreen").hidden = true;
 }
 
+function setAuthMode(mode) {
+  authMode = mode;
+  const signup = mode === "signup";
+  $("#loginForm").querySelector("h1").textContent = signup ? "Create account" : "Sign in";
+  $("#authSubmit").textContent = signup ? "Create account" : "Sign in";
+  $("#authToggle").textContent = signup ? "Have an account? Sign in" : "New here? Create an account";
+  $("#loginPassword").setAttribute("autocomplete", signup ? "new-password" : "current-password");
+
+  // Toggle confirm password field for signup
+  const confirmRow = $("#confirmPasswordRow");
+  confirmRow.hidden = !signup;
+  if (signup) {
+    $("#confirmPassword").required = true;
+    $("#loginMessage").textContent = "Pick a strong password of at least 8 characters.";
+  } else {
+    $("#confirmPassword").required = false;
+    $("#loginMessage").textContent = "Enter your dashboard account details.";
+  }
+
+  // Clear validation hints
+  clearValidationHints();
+  $("#passwordStrength").hidden = true;
+}
+
+function clearValidationHints() {
+  ["emailHint", "passwordHint", "confirmHint"].forEach(id => {
+    const el = $(id);
+    if (el) el.textContent = "";
+  });
+}
+
+function validateEmail(email) {
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return re.test(email);
+}
+
+function getPasswordStrength(password) {
+  let score = 0;
+  if (password.length >= 8) score++;
+  if (/[A-Z]/.test(password)) score++;
+  if (/[0-9]/.test(password)) score++;
+  if (/[^A-Za-z0-9]/.test(password)) score++;
+  return score;
+}
+
+function updatePasswordStrength(password) {
+  const strengthEl = $("#passwordStrength");
+  const labelEl = $("#strengthLabel");
+  const bars = [$("#bar1"), $("#bar2"), $("#bar3"), $("#bar4")];
+  const hintEl = $("#passwordHint");
+
+  if (!password) {
+    strengthEl.hidden = true;
+    if (hintEl) hintEl.textContent = "";
+    return;
+  }
+
+  strengthEl.hidden = false;
+  const score = getPasswordStrength(password);
+
+  // Update bars
+  bars.forEach((bar, i) => {
+    bar.className = "strength-bar";
+    if (i < score) {
+      if (score <= 2) bar.classList.add("weak");
+      else if (score === 3) bar.classList.add("medium");
+      else bar.classList.add("strong");
+    }
+  });
+
+  // Update label
+  const labels = ["Weak", "Fair", "Good", "Strong"];
+  labelEl.textContent = labels[score - 1] || "";
+  labelEl.className = "strength-label" + (score <= 2 ? " weak" : score === 3 ? " medium" : " strong");
+
+  // Update hint
+  const hints = [
+    "Add more characters (min 8)",
+    "Add uppercase, numbers, or symbols",
+    "Good — consider adding symbols",
+    "Excellent password!"
+  ];
+  if (hintEl) hintEl.textContent = hints[score - 1] || "";
+}
+
+function validatePassword(password) {
+  if (!password) return "Password is required";
+  if (password.length < 8) return "Password must be at least 8 characters";
+  return "";
+}
+
+function validateConfirmPassword(password, confirm) {
+  if (!confirm) return "Please confirm your password";
+  if (password !== confirm) return "Passwords do not match";
+  return "";
+}
+
+// Real-time validation listeners
+document.addEventListener("DOMContentLoaded", () => {
+  const emailInput = $("#loginEmail");
+  const passwordInput = $("#loginPassword");
+  const confirmInput = $("#confirmPassword");
+
+  emailInput.addEventListener("blur", () => {
+    const val = emailInput.value.trim();
+    const hint = $("#emailHint");
+    if (!val) {
+      hint.textContent = "";
+      return;
+    }
+    if (!validateEmail(val)) {
+      hint.textContent = "Please enter a valid email";
+      hint.className = "field-hint error";
+    } else {
+      hint.textContent = "✓ Valid email";
+      hint.className = "field-hint success";
+    }
+  });
+
+  passwordInput.addEventListener("input", () => {
+    updatePasswordStrength(passwordInput.value);
+    if (authMode === "signup" && confirmInput.value) {
+      const err = validateConfirmPassword(passwordInput.value, confirmInput.value);
+      const hint = $("#confirmHint");
+      if (err) {
+        hint.textContent = err;
+        hint.className = "field-hint error";
+      } else {
+        hint.textContent = "✓ Passwords match";
+        hint.className = "field-hint success";
+      }
+    }
+  });
+
+  confirmInput.addEventListener("blur", () => {
+    if (authMode === "signup" && confirmInput.value) {
+      const err = validateConfirmPassword(passwordInput.value, confirmInput.value);
+      const hint = $("#confirmHint");
+      if (err) {
+        hint.textContent = err;
+        hint.className = "field-hint error";
+      } else {
+        hint.textContent = "✓ Passwords match";
+        hint.className = "field-hint success";
+      }
+    }
+  });
+});
+
+function showClaim(message = "This links the device to your account.") {
+  document.body.classList.add("locked");
+  hideLogin();
+  $("#claimScreen").hidden = false;
+  $("#claimMessage").textContent = message;
+  $("#claimDeviceId").focus();
+}
+
+function hideClaim() {
+  document.body.classList.remove("locked");
+  $("#claimScreen").hidden = true;
+}
+
 function renderAccount() {
   const email = authSession?.email || "Customer";
   const id = authSession?.customerId || "";
@@ -129,13 +292,79 @@ async function handleLogin(event) {
   }
 }
 
+async function handleSignup() {
+  $("#loginMessage").textContent = "Creating account...";
+  // fetch directly (not api()) so a 400/429 body is read instead of thrown.
+  const res = await fetch("/api/auth/signup", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      email: $("#loginEmail").value,
+      password: $("#loginPassword").value
+    })
+  });
+  const body = await res.json().catch(() => ({}));
+  $("#loginPassword").value = ""; // don't leave the password in the DOM (S10)
+  if (res.ok && body.ok) {
+    setAuthMode("login");
+    $("#loginMessage").textContent = body.emailConfirmationRequired
+      ? "Account created. Check your email for the confirmation link, then sign in."
+      : "Account created. You can sign in now.";
+    return;
+  }
+  $("#loginMessage").textContent = body.error || "Could not create the account.";
+}
+
+async function handleAuthSubmit(event) {
+  event.preventDefault();
+  if (authMode === "signup") {
+    await handleSignup();
+    return;
+  }
+  await handleLogin(event);
+}
+
+async function handleClaim(event) {
+  event.preventDefault();
+  $("#claimMessage").textContent = "Connecting device...";
+  const res = await fetch("/api/devices/claim", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      deviceId: $("#claimDeviceId").value,
+      claimCode: $("#claimCode").value
+    })
+  });
+  const body = await res.json().catch(() => ({}));
+  if (res.ok && body.ok) {
+    $("#claimCode").value = "";
+    hideClaim();
+    await initializeDashboard();
+    return;
+  }
+  $("#claimMessage").textContent = body.error || "Could not connect that device.";
+}
+
 async function handleLogout() {
   await api("/api/auth/logout", { method: "POST" });
   authSession = null;
+  hideClaim();
   showLogin("Signed out.");
 }
 
 async function initializeDashboard() {
+  if (authSession?.authRequired) {
+    try {
+      const owned = await api("/api/devices");
+      if (!owned.count) {
+        showClaim("Enter your device's ID and claim code to finish setup.");
+        return;
+      }
+    } catch {
+      // a devices lookup failure should not block the dashboard
+    }
+  }
+  hideClaim();
   await loadProfile();
   await refreshStatus();
   await refreshFiles();
@@ -293,7 +522,10 @@ $("#fileList").addEventListener("click", async (event) => {
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 });
 
-$("#loginForm").addEventListener("submit", handleLogin);
+$("#loginForm").addEventListener("submit", handleAuthSubmit);
+$("#authToggle").addEventListener("click", () => setAuthMode(authMode === "login" ? "signup" : "login"));
+$("#claimForm").addEventListener("submit", handleClaim);
+$("#claimLogout").addEventListener("click", handleLogout);
 $("#logoutButton").addEventListener("click", handleLogout);
 
 if (await checkAuth()) {
