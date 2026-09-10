@@ -9,6 +9,8 @@ export default defineConfig({
   // test/**/*.js and would try to execute these specs outside the Playwright
   // runner.
   testDir: "./e2e",
+  // Only run smoke tests with auth-off config
+  testMatch: "**/smoke.spec.js",
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",

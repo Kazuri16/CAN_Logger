@@ -4,6 +4,8 @@ const port = 5179;
 
 export default defineConfig({
   testDir: "./e2e",
+  // Only run signup tests with auth-on config
+  testMatch: "**/signup-*.spec.js",
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: "list",
