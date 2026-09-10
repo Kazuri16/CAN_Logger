@@ -24,13 +24,59 @@
         <label>
           Email
           <input id="loginEmail" name="email" type="email" autocomplete="username" required placeholder="customer@example.com">
+          <span class="field-hint" id="emailHint"></span>
         </label>
         <label>
           Password
           <input id="loginPassword" name="password" type="password" autocomplete="current-password" required placeholder="Dashboard password">
+          <div class="password-strength" id="passwordStrength" hidden>
+            <div class="strength-bars">
+              <span class="strength-bar" id="bar1"></span>
+              <span class="strength-bar" id="bar2"></span>
+              <span class="strength-bar" id="bar3"></span>
+              <span class="strength-bar" id="bar4"></span>
+            </div>
+            <span class="strength-label" id="strengthLabel"></span>
+          </div>
+          <span class="field-hint" id="passwordHint"></span>
         </label>
-        <button class="primary-button" type="submit">Sign in</button>
+        <div class="confirm-password-row" id="confirmPasswordRow" hidden>
+          <label class="full-width">
+            Confirm password
+            <input id="confirmPassword" name="confirmPassword" type="password" autocomplete="new-password" placeholder="Re-enter password">
+            <span class="field-hint" id="confirmHint"></span>
+          </label>
+        </div>
+        <button class="primary-button" type="submit" id="authSubmit">Sign in</button>
+        <button class="text-button" type="button" id="authToggle">New here? Create an account</button>
         <div class="test-result" id="loginMessage">Enter your dashboard account details.</div>
+      </form>
+    </section>
+    <section class="login-screen" id="claimScreen" hidden>
+      <form class="login-card" id="claimForm">
+        <div class="brand login-brand">
+          <div class="brand-mark">CL</div>
+          <div>
+            <strong>CAN Logger</strong>
+            <span>Connect your device</span>
+          </div>
+        </div>
+        <div>
+          <p class="eyebrow">One-time setup</p>
+          <h1>Connect your device</h1>
+          <p class="login-copy">Enter the Device ID and claim code from your CAN Logger or installer. The device must have powered on and sent at least one cloud update.</p>
+        </div>
+        <label>
+          Device ID
+          <input id="claimDeviceId" name="deviceId" required placeholder="e.g. esp-1a2b3c">
+        </label>
+        <label>
+          Claim code
+          <input id="claimCode" name="claimCode" required placeholder="Claim code">
+        </label>
+        <button class="primary-button" type="submit">Connect device</button>
+        <button class="text-button" type="button" id="claimLogout">Sign out</button>
+        <div class="test-result" id="claimMessage">This links the device to your account.</div>
       </form>
     </section>
     <aside class="sidebar">
