@@ -324,14 +324,24 @@ async function handleSignup() {
   });
   const body = await res.json().catch(() => ({}));
   $("#loginPassword").value = ""; // don't leave the password in the DOM (S10)
+
+  // Handle local mode (auth off) - signup not available
+  if (!body.authConfigured && !body.authRequired) {
+    $("#loginMessage").textContent = "Signup requires cloud mode. Set SUPABASE_URL and SUPABASE_ANON_KEY to enable user registration.";
+    $("#loginMessage").className = "alert alert-warning";
+    return;
+  }
+
   if (res.ok && body.ok) {
     setAuthMode("login");
     $("#loginMessage").textContent = body.emailConfirmationRequired
       ? "Account created. Check your email for the confirmation link, then sign in."
       : "Account created. You can sign in now.";
+    $("#loginMessage").className = "alert alert-success";
     return;
   }
   $("#loginMessage").textContent = body.error || "Could not create the account.";
+  $("#loginMessage").className = "alert alert-danger";
 }
 
 async function handleAuthSubmit(event) {
