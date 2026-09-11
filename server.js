@@ -25,6 +25,16 @@ const sessionCookieName = "canlogger_session";
 const hostSessionCookieName = "__Host-canlogger_session"; // used when the cookie is Secure (S8)
 const cookieMaxAgeMs = 7 * 24 * 60 * 60 * 1000;
 
+// Cloud mode's data layer (device ingestion, per-user reads) is Supabase itself,
+// not just the login gate - so this is unconditional, unlike the DASHBOARD_AUTH=off
+// escape hatch below. Booting green here previously meant the operator only found
+// out signup/login were dead from a user's bug report instead of a boot failure.
+if (dashboardMode === "cloud" && !authConfigured) {
+  const message = "FATAL: DASHBOARD_MODE=cloud requires SUPABASE_URL and SUPABASE_ANON_KEY to be set (see .env.example).";
+  console.error(message);
+  throw new Error(message);
+}
+
 // Fail closed at import time, not just in start(). Under a serverless wrapper
 // server.js is imported and start() never runs, so the start()-only guard below
 // would be skipped and cookieKey() would silently derive from scrypt("") — a
@@ -967,28 +977,35 @@ async function handleApi(req, res, url) {
   }
 
   if (url.pathname === "/api/auth/signup" && req.method === "POST") {
+    // Every branch below echoes authConfigured/authRequired so the client never
+    // has to special-case which response shape carries them: a response that
+    // omits these two fields on some paths and includes them on others is the
+    // trap that once made the client's local-mode check misfire on every
+    // outcome (success included). Keep this contract consistent.
     if (!authRequired) {
       return json(res, 200, authStatusFor(null));
     }
     if (!authConfigured) {
       return json(res, 503, {
         ok: false,
+        authRequired,
+        authConfigured,
         error: "Dashboard login is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY."
       });
     }
     if (rateLimited(`signup:ip:${clientIp(req)}`, 5, 60 * 60 * 1000)) {
-      return json(res, 429, { ok: false, error: "Too many sign-up attempts. Try again later." });
+      return json(res, 429, { ok: false, authRequired, authConfigured, error: "Too many sign-up attempts. Try again later." });
     }
     let body;
     try {
       body = JSON.parse(await readBody(req) || "{}");
     } catch {
-      return json(res, 400, { ok: false, error: "Invalid sign-up data." });
+      return json(res, 400, { ok: false, authRequired, authConfigured, error: "Invalid sign-up data." });
     }
     const email = String(body.email || "").trim();
     const password = String(body.password || "");
     if (!email || password.length < 8) {
-      return json(res, 400, { ok: false, error: "Enter an email and a password of at least 8 characters." });
+      return json(res, 400, { ok: false, authRequired, authConfigured, error: "Enter an email and a password of at least 8 characters." });
     }
     // Supabase sends the confirmation email (custom SMTP) and returns no session
     // when email confirmation is on. The link lands back on the dashboard root;
@@ -997,9 +1014,9 @@ async function handleApi(req, res, url) {
     const { data, error } = await authClient().auth.signUp({ email, password, options: { emailRedirectTo } });
     if (error) {
       // Generic message: don't confirm or deny that the email already exists.
-      return json(res, 400, { ok: false, error: "Could not create the account. Check the email, or sign in if you already have one." });
+      return json(res, 400, { ok: false, authRequired, authConfigured, error: "Could not create the account. Check the email, or sign in if you already have one." });
     }
-    return json(res, 200, { ok: true, emailConfirmationRequired: !data?.session });
+    return json(res, 200, { ok: true, authRequired, authConfigured, emailConfirmationRequired: !data?.session });
   }
 
   // Cron warmup endpoint - keeps Vercel serverless functions warm

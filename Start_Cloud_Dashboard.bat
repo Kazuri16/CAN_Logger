@@ -35,7 +35,7 @@ echo Upload endpoint for testing:
 echo   http://localhost:5177/api/cloud/status
 echo.
 
-node server.js
+node --env-file-if-exists=.env server.js
 
 echo.
 echo Cloud-mode dashboard stopped.

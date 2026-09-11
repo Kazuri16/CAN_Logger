@@ -11,11 +11,21 @@ services:
         value: Family Vehicle
       - key: DEVICE_UPLOAD_TOKEN
         sync: false
-      - key: DASHBOARD_AUTH_EMAIL
-        value: customer@example.com
-      - key: DASHBOARD_AUTH_PASSWORD
-        sync: false
       - key: CUSTOMER_ID
         value: CANLOGGER-001
-      - key: DATABASE_URL
+      # Supabase Auth replaced the old email/password + DATABASE_URL scheme
+      # (see the "Migrate dashboard to Supabase Auth" commit) - server.js
+      # reads these, not DASHBOARD_AUTH_EMAIL/PASSWORD or DATABASE_URL, which
+      # were dropped here because nothing in the codebase reads them anymore.
+      # DASHBOARD_MODE=cloud now hard-fails at boot without these set (see
+      # server.js's SUPABASE_URL/SUPABASE_ANON_KEY check), so this blueprint
+      # must declare them even though sync:false means Render won't fill
+      # in a value - set the real ones in the Render dashboard.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SESSION_COOKIE_SECRET
         sync: false

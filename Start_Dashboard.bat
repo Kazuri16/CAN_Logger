@@ -21,7 +21,7 @@ echo Keep this window open while using the dashboard.
 echo To stop, close this window or run Stop_Dashboard.bat.
 echo.
 
-node server.js
+node --env-file-if-exists=.env server.js
 
 echo.
 echo Dashboard stopped.

@@ -325,8 +325,11 @@ async function handleSignup() {
   const body = await res.json().catch(() => ({}));
   $("#loginPassword").value = ""; // don't leave the password in the DOM (S10)
 
-  // Handle local mode (auth off) - signup not available
-  if (!body.authConfigured && !body.authRequired) {
+  // Handle local mode (auth off) - signup not available. Only the "auth not
+  // required" early-return on the server sends this field; every real signup
+  // outcome (success, validation error, rate limit, Supabase error) omits it,
+  // so checking strict === false (not falsy) avoids swallowing those responses.
+  if (body.authRequired === false) {
     $("#loginMessage").textContent = "Signup requires cloud mode. Set SUPABASE_URL and SUPABASE_ANON_KEY to enable user registration.";
     $("#loginMessage").className = "alert alert-warning";
     return;

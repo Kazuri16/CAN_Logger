@@ -382,6 +382,15 @@ test("16. app.js: escapeHtml defined + used in renderAlerts/renderFiles; login c
   assert.ok(slice("function renderFiles", "async function refreshStatus").includes("escapeHtml("), "escapeHtml used in renderFiles");
   const handleLogin = slice("async function handleLogin", "async function handleLogout");
   assert.match(handleLogin, /catch[\s\S]*loginPassword"\)\.value\s*=\s*""/, "failed-login catch clears #loginPassword");
+  // Regression: the local-mode guard must key off the explicit `authRequired
+  // === false` the server sends only from its early-return branch, not a
+  // falsy check - every other /api/auth/signup response (success, validation
+  // error, rate limit, Supabase error) omits both fields entirely, so a
+  // `!body.authConfigured && !body.authRequired` guard fires on all of them
+  // and permanently masks real signup outcomes behind "Signup requires cloud
+  // mode" even when signup is fully configured and working.
+  const handleSignup = slice("async function handleSignup", "async function handleAuthSubmit");
+  assert.match(handleSignup, /body\.authRequired\s*===\s*false/, "signup local-mode guard checks authRequired === false, not a falsy fallback");
 });
 
 // --------------------------------------------------------------------------
@@ -708,4 +717,64 @@ test("31. migrations: 0002 rpc lockdown, 0003 retention (renamed), 0004 claim_co
   assert.match(claim, /alter table public\.devices add column if not exists claim_code text/i);
   assert.match(claim, /create index if not exists devices_claim_code_idx/i);
   assert.ok(!/for\s+insert/i.test(claim), "0004 adds no INSERT policy (user_devices stays service-only)");
+});
+
+// --------------------------------------------------------------------------
+// 32. /api/auth/signup response contract (regression: a client that once
+// masked every real outcome behind "Signup requires cloud mode" because
+// authConfigured/authRequired were only present on one branch)
+// --------------------------------------------------------------------------
+test("32. POST /api/auth/signup echoes authConfigured:true, authRequired:true on every branch (success, validation error, rate limit)", async () => {
+  const s = await boot();
+  try {
+    const ok = await signup(s.base, { email: "contract-ok@example.com", password: "at-least-8-chars" });
+    assert.equal(ok.body.authConfigured, true, "success branch carries authConfigured");
+    assert.equal(ok.body.authRequired, true, "success branch carries authRequired");
+
+    const bad = await signup(s.base, { email: "not-an-email", password: "short" });
+    assert.equal(bad.res.status, 400);
+    assert.equal(bad.body.authConfigured, true, "validation-error branch carries authConfigured");
+    assert.equal(bad.body.authRequired, true, "validation-error branch carries authRequired");
+
+    for (let i = 0; i < 5; i++) {
+      await signup(s.base, { email: `contract-rl-${i}@example.com`, password: "at-least-8-chars" });
+    }
+    const limited = await signup(s.base, { email: "contract-rl-6@example.com", password: "at-least-8-chars" });
+    assert.equal(limited.res.status, 429);
+    assert.equal(limited.body.authConfigured, true, "rate-limit branch carries authConfigured");
+    assert.equal(limited.body.authRequired, true, "rate-limit branch carries authRequired");
+  } finally {
+    await s.stop();
+  }
+});
+
+// --------------------------------------------------------------------------
+// 33. Hard-fail on cloud mode without Supabase config (regression: booting
+// green here previously meant an operator only discovered signup/login were
+// dead from a user's bug report, not from a boot failure)
+// --------------------------------------------------------------------------
+test("33. cloud mode without SUPABASE_URL/SUPABASE_ANON_KEY -> exit non-zero + FATAL, even with DASHBOARD_AUTH=off", async () => {
+  const missingUrl = await bootAndWaitExit({ SUPABASE_URL: null });
+  assert.notEqual(missingUrl.code, 0, "child exits non-zero");
+  assert.match(missingUrl.stderr, /FATAL/, "stderr contains FATAL");
+
+  const missingKey = await bootAndWaitExit({ SUPABASE_ANON_KEY: null });
+  assert.notEqual(missingKey.code, 0, "child exits non-zero");
+  assert.match(missingKey.stderr, /FATAL/, "stderr contains FATAL");
+
+  // Unlike the SESSION_COOKIE_SECRET check, DASHBOARD_AUTH=off does not
+  // exempt this one: cloud mode's data layer is Supabase, not just the login
+  // gate, so a missing config still can't boot even with login disabled.
+  const authOff = await bootAndWaitExit({ SUPABASE_URL: null, DASHBOARD_AUTH: "off" });
+  assert.notEqual(authOff.code, 0, "child exits non-zero even with DASHBOARD_AUTH=off");
+  assert.match(authOff.stderr, /FATAL/, "stderr contains FATAL");
+
+  // Local mode never required Supabase - unaffected by this check.
+  const s = await boot({ DASHBOARD_MODE: "local", SUPABASE_URL: null, SUPABASE_ANON_KEY: null });
+  try {
+    assert.equal(s.child.exitCode, null, "local mode boots fine without Supabase config");
+    assert.ok(s.ready, "server answers");
+  } finally {
+    await s.stop();
+  }
 });

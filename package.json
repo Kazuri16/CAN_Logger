@@ -6,8 +6,8 @@
   "type": "module",
   "scripts": {
     "setup": "node --version",
-    "start": "node server.js",
-    "start:cloud": "node server.js",
+    "start": "node --env-file-if-exists=.env server.js",
+    "start:cloud": "node --env-file-if-exists=.env server.js",
     "check": "node --check server.js",
     "test": "node --test",
     "test:e2e": "playwright test"
