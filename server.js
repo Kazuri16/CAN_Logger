@@ -1002,6 +1002,11 @@ async function handleApi(req, res, url) {
     return json(res, 200, { ok: true, emailConfirmationRequired: !data?.session });
   }
 
+  // Cron warmup endpoint - keeps Vercel serverless functions warm
+  if (url.pathname === "/api/cron/warmup" && req.method === "GET") {
+    return json(res, 200, { ok: true, timestamp: new Date().toISOString() });
+  }
+
   if (url.pathname === "/api/auth/logout" && req.method === "POST") {
     // Best-effort server-side revocation: a copied/logged cookie's refresh token
     // stays valid for weeks otherwise. Never let logout 500 — the cookie clear
