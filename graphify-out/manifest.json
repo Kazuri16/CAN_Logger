@@ -1,0 +1,182 @@
+{
+  ".claude/settings.local.json": {
+    "mtime": 1788706504.939063,
+    "seen": 1789126119.0334837,
+    "ast_hash": "a71ec6960ce76ef59f281bd59628f52d",
+    "semantic_hash": "a71ec6960ce76ef59f281bd59628f52d"
+  },
+  "api/index.js": {
+    "mtime": 1788671297.8871212,
+    "seen": 1789126119.0334837,
+    "ast_hash": "6ebf03b009347a3985c39f8db8b60ff2",
+    "semantic_hash": "6ebf03b009347a3985c39f8db8b60ff2"
+  },
+  "database/migrations/0001_init.sql": {
+    "mtime": 1788462876.3504646,
+    "seen": 1789126119.0334837,
+    "ast_hash": "2a42c3dc13ff8deffcdab1f275cef8a4",
+    "semantic_hash": "2a42c3dc13ff8deffcdab1f275cef8a4"
+  },
+  "database/migrations/0002_lock_down_handle_new_user_rpc.sql": {
+    "mtime": 1788707903.668369,
+    "seen": 1789126119.0334837,
+    "ast_hash": "fffcf2d8e95037843d03e2367a49d374",
+    "semantic_hash": "fffcf2d8e95037843d03e2367a49d374"
+  },
+  "database/migrations/0003_device_events_retention.sql": {
+    "mtime": 1789062772.0806563,
+    "seen": 1789126119.0334837,
+    "ast_hash": "560c0878a766f034480baf3b27e86df7",
+    "semantic_hash": "560c0878a766f034480baf3b27e86df7"
+  },
+  "database/migrations/0004_device_claiming.sql": {
+    "mtime": 1788707928.030231,
+    "seen": 1789126119.0334837,
+    "ast_hash": "54fddcd047f46261a9266efd7739bfe9",
+    "semantic_hash": "54fddcd047f46261a9266efd7739bfe9"
+  },
+  "database/schema.sql": {
+    "mtime": 1788462033.4527333,
+    "seen": 1789126119.0334837,
+    "ast_hash": "cfa6eccd021d0376283791ba17bae793",
+    "semantic_hash": "cfa6eccd021d0376283791ba17bae793"
+  },
+  "database/seed.demo.sql": {
+    "mtime": 1788462037.2773945,
+    "seen": 1789126119.0334837,
+    "ast_hash": "858a815df5d3a56ef8db2e6c34e0c461",
+    "semantic_hash": "858a815df5d3a56ef8db2e6c34e0c461"
+  },
+  "database/seed.example.sql": {
+    "mtime": 1788462028.592626,
+    "seen": 1789126119.0334837,
+    "ast_hash": "e6c6643bbfe4bbcc1be5f67e997d4971",
+    "semantic_hash": "e6c6643bbfe4bbcc1be5f67e997d4971"
+  },
+  "e2e/signup-ux.spec.js": {
+    "mtime": 1789064677.4714892,
+    "seen": 1789126119.0334837,
+    "ast_hash": "070bc73e3503cfd3e3c45dc4dcf229bc",
+    "semantic_hash": "070bc73e3503cfd3e3c45dc4dcf229bc"
+  },
+  "e2e/smoke.spec.js": {
+    "mtime": 1788800526.863348,
+    "seen": 1789126119.0334837,
+    "ast_hash": "32d73291b51fcfe64d47f2baf3f1d00c",
+    "semantic_hash": "32d73291b51fcfe64d47f2baf3f1d00c"
+  },
+  "package.json": {
+    "mtime": 1789107493.6481438,
+    "seen": 1789126119.0334837,
+    "ast_hash": "f6662f9669447c7ebb0a331bb414e86d",
+    "semantic_hash": "f6662f9669447c7ebb0a331bb414e86d"
+  },
+  "playwright.config.js": {
+    "mtime": 1789065966.604294,
+    "seen": 1789126119.0334837,
+    "ast_hash": "fdf829ebad5fa988cb6d281194439d5b",
+    "semantic_hash": "fdf829ebad5fa988cb6d281194439d5b"
+  },
+  "playwright.signup.config.js": {
+    "mtime": 1789065966.754187,
+    "seen": 1789126119.0334837,
+    "ast_hash": "b8006876936c6e81025ebe7c006dc290",
+    "semantic_hash": "b8006876936c6e81025ebe7c006dc290"
+  },
+  "public/app.js": {
+    "mtime": 1789108396.4586952,
+    "seen": 1789126119.0334837,
+    "ast_hash": "e00946b70f588323c8f16fc0cc58edce",
+    "semantic_hash": "e00946b70f588323c8f16fc0cc58edce"
+  },
+  "server.js": {
+    "mtime": 1789125351.6287076,
+    "seen": 1789126119.0334837,
+    "ast_hash": "834006565f99c4627c3ee0950eb3b9f3",
+    "semantic_hash": "834006565f99c4627c3ee0950eb3b9f3"
+  },
+  "test/dashboard.test.js": {
+    "mtime": 1789125374.4956527,
+    "seen": 1789126119.0334837,
+    "ast_hash": "e0e5549d93bcf0c31419600cbf143c57",
+    "semantic_hash": "e0e5549d93bcf0c31419600cbf143c57"
+  },
+  "test/fixtures/boot.mjs": {
+    "mtime": 1788486984.529134,
+    "seen": 1789126119.0334837,
+    "ast_hash": "5d9e23d55192f3bf7d2de87fc1b5fa80",
+    "semantic_hash": "5d9e23d55192f3bf7d2de87fc1b5fa80"
+  },
+  "test/fixtures/fake-supabase.mjs": {
+    "mtime": 1789062772.0943153,
+    "seen": 1789126119.0334837,
+    "ast_hash": "5b7eb1c749188b3464113be45c4be781",
+    "semantic_hash": "5b7eb1c749188b3464113be45c4be781"
+  },
+  "test/fixtures/harness.mjs": {
+    "mtime": 1788487000.0237422,
+    "seen": 1789126119.0334837,
+    "ast_hash": "ea5ea2b7e7c862aaf399b2957e7027da",
+    "semantic_hash": "ea5ea2b7e7c862aaf399b2957e7027da"
+  },
+  "vercel.json": {
+    "mtime": 1789096267.0437796,
+    "seen": 1789126119.0334837,
+    "ast_hash": "173ca2465a959aa1b176467e07d3be9e",
+    "semantic_hash": "173ca2465a959aa1b176467e07d3be9e"
+  },
+  "KEEP_ALIVE_SETUP.html": {
+    "mtime": 1789055144.5243347,
+    "seen": 1789126119.0334837,
+    "ast_hash": "2a51f3066b71f6a7fd9c5cd85a994000",
+    "semantic_hash": "2a51f3066b71f6a7fd9c5cd85a994000"
+  },
+  "MIGRATION_TODO.md": {
+    "mtime": 1788687549.5057113,
+    "seen": 1789126119.0334837,
+    "ast_hash": "3a39f8be0dfb13047cd600bc82281e01",
+    "semantic_hash": "3a39f8be0dfb13047cd600bc82281e01"
+  },
+  "README.md": {
+    "mtime": 1789062772.0782306,
+    "seen": 1789126119.0334837,
+    "ast_hash": "bf78da2338344564e834813d62570e00",
+    "semantic_hash": "bf78da2338344564e834813d62570e00"
+  },
+  "SIGNUP_ENHANCEMENTS.md": {
+    "mtime": 1789062558.8655045,
+    "seen": 1789126119.0334837,
+    "ast_hash": "8c180667ebdced26ae0c43aa4abeb00c",
+    "semantic_hash": "8c180667ebdced26ae0c43aa4abeb00c"
+  },
+  "database/README.md": {
+    "mtime": 1789062772.0792284,
+    "seen": 1789126119.0334837,
+    "ast_hash": "9f2707b46cf97f1a801776d3fb5aef08",
+    "semantic_hash": "9f2707b46cf97f1a801776d3fb5aef08"
+  },
+  "public/index.html": {
+    "mtime": 1789064295.9115207,
+    "seen": 1789126119.0334837,
+    "ast_hash": "cfe025d2e9767aaccac12dcde1e8ebdc",
+    "semantic_hash": "cfe025d2e9767aaccac12dcde1e8ebdc"
+  },
+  "public/uptime-monitor.html": {
+    "mtime": 1789054680.1290894,
+    "seen": 1789126119.0334837,
+    "ast_hash": "f5daae5aa3f14ef023c5fc523c821a1b",
+    "semantic_hash": "f5daae5aa3f14ef023c5fc523c821a1b"
+  },
+  "render.yaml": {
+    "mtime": 1785470925.9543433,
+    "seen": 1789126119.0334837,
+    "ast_hash": "eda8ef3d37603c3440351362240bbcda",
+    "semantic_hash": "eda8ef3d37603c3440351362240bbcda"
+  },
+  "signup-verification.md": {
+    "mtime": 1789061896.7976933,
+    "seen": 1789126119.0334837,
+    "ast_hash": "84fc8907651f66b8a982a283867885b4",
+    "semantic_hash": "84fc8907651f66b8a982a283867885b4"
+  }
+}

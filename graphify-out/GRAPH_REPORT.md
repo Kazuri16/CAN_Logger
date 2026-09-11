@@ -1,131 +1,154 @@
-# Graph Report - dashboard  (2026-09-10)
+# Graph Report - dashboard  (2026-09-11)
 
 ## Corpus Check
-- Corpus is ~16,458 words - fits in a single context window. You may not need a graph.
+- 30 files · ~22,275 words
+- Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 202 nodes · 364 edges · 14 communities
-- Extraction: 91% EXTRACTED · 9% INFERRED · 0% AMBIGUOUS · INFERRED: 32 edges (avg confidence: 0.86)
-- Token cost: 0 input · 0 output
+- 270 nodes · 433 edges · 26 communities (16 shown, 1 thin omitted)
+- Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 22 edges (avg confidence: 0.85)
+- Token cost: 0 input · 169,490 output
 
 ## Community Hubs (Navigation)
-- Device & Auth Schema
-- SPA Handler Functions
+- Dashboard Client UI
+- Signup, Devices & Schema
 - Session & Auth Utilities
-- Dependencies & Config
-- Server Runtime Setup
-- Dashboard Testing
-- UI Helper Functions
+- Package Dependencies
+- Deployment & Review Tracking
+- Server Runtime Config
+- Dashboard Test Suite
+- Status & Alert Helpers
+- Auth Schema & RLS
+- Keep-Alive / Uptime Options
 - Database Query Functions
-- Test Infrastructure
-- Cloud API Routes
-- Vercel & Build Config
-- Device Security
+- Test Fixtures & Fakes
+- Vercel API Wrapper
+- Event Retention Migration
+- Vercel Config
+- Device Claim Security
+- Devices Table
 
 ## God Nodes (most connected - your core abstractions)
 1. `handleApi()` - 36 edges
-2. `api()` - 11 edges
-3. `initializeDashboard()` - 9 edges
-4. `getSession()` - 9 edges
-5. `Self Sign-up and Device Claiming` - 9 edges
-6. `Dashboard SPA Shell (index.html)` - 9 edges
-7. `devices Table` - 8 edges
-8. `scripts` - 7 edges
-9. `mapStatus()` - 7 edges
-10. `handleLogin()` - 6 edges
+2. `Dashboard Database README (Supabase Postgres schema)` - 15 edges
+3. `api()` - 13 edges
+4. `initializeDashboard()` - 10 edges
+5. `getSession()` - 9 edges
+6. `PC Vehicle Health Dashboard README` - 9 edges
+7. `Dashboard Keep-Alive Setup Guide` - 8 edges
+8. `Verification Report: CAN Logger Dashboard Signup Feature` - 8 edges
+9. `scripts` - 7 edges
+10. `mapStatus()` - 7 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `Self-contained Artifact Dashboard (artifact/dashboard.html)` --semantically_similar_to--> `Dashboard SPA Shell (index.html)`  [INFERRED] [semantically similar]
-  MIGRATION_TODO.md → public/index.html
-- `App Wiring Flow (signup, login, claim, request, upload)` --semantically_similar_to--> `Self Sign-up and Device Claiming`  [INFERRED] [semantically similar]
-  database/README.md → README.md
-- `DASHBOARD_AUTH=off Trusted-LAN Bypass` --semantically_similar_to--> `Row Level Security Model`  [INFERRED] [semantically similar]
-  README.md → database/README.md
-- `Render Web Service can-logger-dashboard` --conceptually_related_to--> `DASHBOARD_AUTH=off Trusted-LAN Bypass`  [AMBIGUOUS]
-  render.yaml → README.md
-- `Connect Your Logger Setup Banner (#setupBanner)` --conceptually_related_to--> `Local Logger API Proxy (GET /api/status, /api/files, /view, /download)`  [INFERRED]
+- `Uptime Monitor static info page (public/uptime-monitor.html)` --semantically_similar_to--> `Dashboard Keep-Alive Setup Guide`  [INFERRED] [semantically similar]
+  public/uptime-monitor.html → KEEP_ALIVE_SETUP.html
+- `Option 3: DIY /health check endpoint pinged by cron` --conceptually_related_to--> `render.yaml - can-logger-dashboard Render web service config`  [AMBIGUOUS]
+  KEEP_ALIVE_SETUP.html → render.yaml
+- `Verification Report: CAN Logger Dashboard Signup Feature` --semantically_similar_to--> `Signup Form Enhancements summary`  [INFERRED] [semantically similar]
+  signup-verification.md → SIGNUP_ENHANCEMENTS.md
+- `Real-time email validation (valid/invalid feedback on blur)` --references--> `loginForm (#loginForm) with email/password fields`  [INFERRED]
+  SIGNUP_ENHANCEMENTS.md → public/index.html
+- `claimForm (#claimForm, #claimDeviceId, #claimCode)` --references--> `POST /api/devices/claim endpoint (service-role client; match device_id+claim_code; upsert user_devices)`  [INFERRED]
   public/index.html → README.md
 
 ## Import Cycles
 - None detected.
 
 ## Hyperedges (group relationships)
-- **Self-service Device Claiming Flow** — public_index_claim_screen, readme_self_signup_and_device_claiming, database_readme_device_claiming_migration, database_readme_devices_table, database_readme_user_devices_table, database_readme_device_status_latest_table, database_readme_service_role_write_path [EXTRACTED 1.00]
-- **ESP32 Cloud Telemetry Ingestion Flow** — readme_cloud_mode, readme_cloud_status_endpoint, render_device_upload_token_env, database_readme_devices_table, database_readme_device_status_latest_table, database_readme_device_events_table, database_readme_device_events_retention [EXTRACTED 1.00]
-- **Five-page Dashboard SPA Sections** — public_index_home_page, public_index_alerts_page, public_index_reports_page, public_index_settings_page, public_index_location_page, public_index_vehicle_health_dashboard_shell [EXTRACTED 1.00]
+- **Customer Signup Flow (UI toggle -> client JS -> server endpoint -> tests)** — can_logger_dashboard_public_index_authtoggle, can_logger_dashboard_public_app_setauthmode, can_logger_dashboard_public_app_handlesignup, can_logger_dashboard_server_post_api_auth_signup, can_logger_dashboard_test_dashboard_test [INFERRED 0.85]
+- **Device Claiming Data Flow (claim endpoint + the three tables it reads/writes)** — can_logger_dashboard_server_post_api_devices_claim, can_logger_dashboard_database_devices_table, can_logger_dashboard_database_user_devices_table, can_logger_dashboard_database_device_status_latest_table [INFERRED 0.85]
+- **Vercel Cold-Start Mitigation Guidance (duplicated advice across two static pages)** — can_logger_dashboard_keep_alive_setup_guide, can_logger_dashboard_public_uptime_monitor_doc, can_logger_dashboard_keep_alive_setup_cron_ping_option, can_logger_dashboard_keep_alive_setup_vercel_pro_option [INFERRED 0.80]
 
-## Communities (14 total, 0 thin omitted)
+## Communities (26 total, 1 thin omitted)
 
-### Community 0 - "Device & Auth Schema"
-Cohesion: 0.09
-Nodes (42): App Wiring Flow (signup, login, claim, request, upload), Device Claiming Migration (0004 devices.claim_code), device_events Retention Trigger (0003), device_events Table, device_status_latest Table, devices Table, handle_new_user() RPC Lockdown (0002), Per-Request Access-Token Client (+34 more)
+### Community 0 - "Dashboard Client UI"
+Cohesion: 0.08
+Nodes (45): addAiMessage(), aiHistory, api(), applyServiceMode(), checkAuth(), clearValidationHints(), escapeHtml(), formatNumber() (+37 more)
 
-### Community 1 - "SPA Handler Functions"
-Cohesion: 0.15
-Nodes (30): api(), applyServiceMode(), checkAuth(), escapeHtml(), formatNumber(), handleAuthSubmit(), handleClaim(), handleLogin() (+22 more)
+### Community 1 - "Signup, Devices & Schema"
+Cohesion: 0.08
+Nodes (38): App wiring flow (signup -> confirm -> login -> claim device -> ESP32 upload), device_events table (alert/event history), device_status_latest table (latest vehicle-health snapshot per device), devices table (ESP32 loggers; upload_token_hash, claim_code), migrations/0001_init.sql - base schema + RLS, migrations/0002_lock_down_handle_new_user_rpc.sql - revoke EXECUTE on handle_new_user(), migrations/0003_device_events_retention.sql - caps device_events at 500 rows/device (renumbered from 0002), migrations/0004_device_claiming.sql - adds devices.claim_code for self-service claiming (+30 more)
 
 ### Community 2 - "Session & Auth Utilities"
 Cohesion: 0.13
 Nodes (22): authClient(), authStatusFor(), clearSessionCookie(), clientIp(), cookieKey(), decryptSession(), demoFiles(), encryptSession() (+14 more)
 
-### Community 3 - "Dependencies & Config"
+### Community 3 - "Package Dependencies"
 Cohesion: 0.10
 Nodes (20): dependencies, @supabase/supabase-js, description, devDependencies, @playwright/test, engines, node, name (+12 more)
 
-### Community 4 - "Server Runtime Setup"
+### Community 4 - "Deployment & Review Tracking"
+Cohesion: 0.12
+Nodes (20): artifact/dashboard.html self-contained static dashboard draft, Independent code review requirement before push (rationale: project CLAUDE.md rule blocks the routine until reviewed), Dashboard Migration Render to Vercel + Artifact - Tracking Checklist, publish-clean branch (must be pushed to origin before routine runs), Scheduled cloud agent routine (trig_015V5Hc7BXCBFWbWzrehdVsa, fires 2026-09-06 19:30 IST), Vercel deploy step (vercel link, env vars, vercel deploy --prod), aiPage section (#aiPage) - AI chat about vehicle, alertsPage section (#alertsPage) (+12 more)
+
+### Community 5 - "Server Runtime Config"
 Cohesion: 0.12
 Nodes (16): authConfigured, dashboardMode, __dirname, fetchLogger(), loginAttempts, logStartupWarnings(), mimeTypes, normalizeAddress() (+8 more)
 
-### Community 5 - "Dashboard Testing"
+### Community 6 - "Dashboard Test Suite"
 Cohesion: 0.18
 Nodes (11): GOOD, GOOD_CLAIM, GOOD_SIGNUP, baseEnv(), boot(), bootAndWaitExit(), bootPath, buildEnv() (+3 more)
 
-### Community 6 - "UI Helper Functions"
+### Community 7 - "Status & Alert Helpers"
 Cohesion: 0.23
 Nodes (12): alertMessage(), baseLocation(), cloudEventFromStatus(), demoStatus(), friendlyEventsFromStatus(), ingestDeviceStatus(), mapStatus(), normalizeCloudPayload() (+4 more)
 
-### Community 7 - "Database Query Functions"
+### Community 8 - "Auth Schema & RLS"
+Cohesion: 0.27
+Nodes (9): auth.users, on_auth_user_created, public.device_events, public.device_status_latest, public.devices, public.profiles, public.report_files, public.user_devices (+1 more)
+
+### Community 9 - "Keep-Alive / Uptime Options"
+Cohesion: 0.24
+Nodes (10): cron-job.org (free cron ping service), Option 1: Free Cron Ping (recommended - free, 2min setup, no code changes), Dashboard Keep-Alive Setup Guide, Option 3: DIY /health check endpoint pinged by cron, Pingdom (alternative limited-free uptime service), Statuscake (alternative free uptime service), UptimeRobot (alternative free cron/uptime service), Vercel free-tier cold start (rationale: functions spin down after ~15min idle, causing 2-5s cold start on next visit) (+2 more)
+
+### Community 10 - "Database Query Functions"
 Cohesion: 0.28
 Nodes (9): devicesForUser(), eventsForUser(), filesForUser(), latestStatusForUser(), ownedDeviceUuids(), rowToEvent(), rowToFile(), rowToStatus() (+1 more)
 
-### Community 8 - "Test Infrastructure"
+### Community 11 - "Test Fixtures & Fakes"
 Cohesion: 0.28
 Nodes (4): makeChain(), chain, record(), tableRead()
 
-### Community 9 - "Cloud API Routes"
+### Community 12 - "Vercel API Wrapper"
 Cohesion: 0.29
 Nodes (5): json(), requireBrowserAuth(), server, serveStatic(), text()
 
-### Community 10 - "Vercel & Build Config"
-Cohesion: 0.33
-Nodes (5): includeFiles, functions, api/index.js, rewrites, $schema
+### Community 13 - "Event Retention Migration"
+Cohesion: 0.40
+Nodes (4): device_events_retention, public.trim_device_events(), public.device_events, public.trim_device_events
 
-### Community 11 - "Device Security"
+### Community 14 - "Vercel Config"
+Cohesion: 0.40
+Nodes (4): builds, crons, routes, version
+
+### Community 15 - "Device Claim Security"
 Cohesion: 0.50
 Nodes (4): claimDevice(), serviceClient(), tokenEquals(), verifyUploadToken()
 
 ## Ambiguous Edges - Review These
-- `DASHBOARD_AUTH=off Trusted-LAN Bypass` → `Render Web Service can-logger-dashboard`  [AMBIGUOUS]
-  render.yaml · relation: conceptually_related_to
+- `Option 3: DIY /health check endpoint pinged by cron` → `render.yaml - can-logger-dashboard Render web service config`  [AMBIGUOUS]
+  KEEP_ALIVE_SETUP.html · relation: conceptually_related_to
 
 ## Knowledge Gaps
-- **40 isolated node(s):** `name`, `version`, `private`, `description`, `type` (+35 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 52 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **59 isolated node(s):** `name`, `version`, `private`, `description`, `type` (+54 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 90 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **1 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **What is the exact relationship between `DASHBOARD_AUTH=off Trusted-LAN Bypass` and `Render Web Service can-logger-dashboard`?**
+- **What is the exact relationship between `Option 3: DIY /health check endpoint pinged by cron` and `render.yaml - can-logger-dashboard Render web service config`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **Why does `handleApi()` connect `Session & Auth Utilities` to `Server Runtime Setup`, `UI Helper Functions`, `Database Query Functions`, `Cloud API Routes`, `Device Security`?**
-  _High betweenness centrality (0.014) - this node is a cross-community bridge._
-- **Are the 3 inferred relationships involving `Self Sign-up and Device Claiming` (e.g. with `App Wiring Flow (signup, login, claim, request, upload)` and `Connect Your Device Screen (#claimScreen)`) actually correct?**
-  _`Self Sign-up and Device Claiming` has 3 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `PC Vehicle Health Dashboard README` connect `Deployment & Review Tracking` to `Signup, Devices & Schema`?**
+  _High betweenness centrality (0.035) - this node is a cross-community bridge._
+- **Why does `Dashboard Database README (Supabase Postgres schema)` connect `Signup, Devices & Schema` to `Deployment & Review Tracking`?**
+  _High betweenness centrality (0.020) - this node is a cross-community bridge._
+- **Why does `Self sign-up + device claiming flow (rationale: lets customers create their own account and attach their device without an admin)` connect `Signup, Devices & Schema` to `Deployment & Review Tracking`?**
+  _High betweenness centrality (0.020) - this node is a cross-community bridge._
 - **What connects `name`, `version`, `private` to the rest of the system?**
-  _40 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `Device & Auth Schema` be split into smaller, more focused modules?**
-  _Cohesion score 0.0859465737514518 - nodes in this community are weakly interconnected._
-- **Should `SPA Handler Functions` be split into smaller, more focused modules?**
-  _Cohesion score 0.14919354838709678 - nodes in this community are weakly interconnected._
-- **Should `Session & Auth Utilities` be split into smaller, more focused modules?**
-  _Cohesion score 0.12987012987012986 - nodes in this community are weakly interconnected._
+  _59 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `Dashboard Client UI` be split into smaller, more focused modules?**
+  _Cohesion score 0.0815686274509804 - nodes in this community are weakly interconnected._
+- **Should `Signup, Devices & Schema` be split into smaller, more focused modules?**
+  _Cohesion score 0.08108108108108109 - nodes in this community are weakly interconnected._

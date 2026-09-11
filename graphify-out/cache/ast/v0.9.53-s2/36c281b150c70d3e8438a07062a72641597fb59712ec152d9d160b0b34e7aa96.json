@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_database_migrations_0002_lock_down_handle_new_user_rpc_sql", "label": "0002_lock_down_handle_new_user_rpc.sql", "file_type": "code", "source_file": "database/migrations/0002_lock_down_handle_new_user_rpc.sql", "source_location": null}], "edges": []}

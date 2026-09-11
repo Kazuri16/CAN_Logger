@@ -1,5 +1,0 @@
-C:\Users\abhis\OneDrive\Documents\major\CAN_Logger\dashboard\MIGRATION_TODO.md
-C:\Users\abhis\OneDrive\Documents\major\CAN_Logger\dashboard\README.md
-C:\Users\abhis\OneDrive\Documents\major\CAN_Logger\dashboard\database\README.md
-C:\Users\abhis\OneDrive\Documents\major\CAN_Logger\dashboard\public\index.html
-C:\Users\abhis\OneDrive\Documents\major\CAN_Logger\dashboard\render.yaml
